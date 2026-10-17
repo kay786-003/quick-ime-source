@@ -1,0 +1,103 @@
+name: Build
+
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ 'v*' ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build QuickIME.exe
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show environment
+        shell: pwsh
+        run: |
+          $PSVersionTable.PSVersion
+          $csc = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
+          Write-Host "csc exists: $(Test-Path $csc)"
+
+      - name: Build
+        shell: pwsh
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1 -RunTests
+
+      - name: Smoke test the packaged exe
+        shell: pwsh
+        run: |
+          $out = & .\dist\QuickIME.exe --selftest 2>&1
+          $out | Write-Host
+          if ($LASTEXITCODE -ne 0) { throw "selftest failed" }
+
+      - name: Show checksums
+        shell: pwsh
+        run: |
+          Get-FileHash .\dist\QuickIME.exe -Algorithm SHA256 |
+            ForEach-Object { "QuickIME.exe SHA256 = $($_.Hash)" }
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: QuickIME-win
+          path: |
+            dist/QuickIME.exe
+            dist/qdict.bin
+            releases/使用說明.txt
+            releases/候選字視窗示意圖.png
+          if-no-files-found: error
+
+      # 只有打 tag（例如 v1.0）時才發 Release，方便直接下載
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $zip = "速成輸入法_$tag.zip"
+
+          # 準備上傳檔案
+          $stage = "release-stage"
+          $inner = Join-Path $stage "速成輸入法"
+          New-Item -ItemType Directory -Force -Path $inner | Out-Null
+          Copy-Item .\dist\QuickIME.exe -Destination $inner
+          Copy-Item .\dist\qdict.bin   -Destination $inner
+          Copy-Item .\releases\使用說明.txt -Destination $inner -ErrorAction SilentlyContinue
+          Copy-Item .\releases\候選字視窗示意圖.png -Destination $inner -ErrorAction SilentlyContinue
+
+          Compress-Archive -Path $inner -DestinationPath $zip -Force
+          Copy-Item .\dist\QuickIME.exe .\QuickIME.exe
+
+          gh release create $tag `
+            "$zip" `
+            "QuickIME.exe" `
+            --title "速成輸入法 $tag" `
+            --notes "免安裝速成輸入法。下載 ``速成輸入法_$tag.zip`` 解壓即用，或直接下載 ``QuickIME.exe``（字典已內嵌）。"
+
+      # 非 tag 推送時，把現成 exe 提交回 releases/，方便直接下載
+      - name: Commit prebuilt binary to releases/
+        if: github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          Copy-Item .\dist\QuickIME.exe .\releases\QuickIME.exe -Force
+
+          git add releases/QuickIME.exe
+          git diff --cached --quiet
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "releases/QuickIME.exe 無變化，略過 commit"
+          } else {
+            git commit -m "chore: update prebuilt QuickIME.exe [skip ci]"
+            git push
+          }

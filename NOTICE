@@ -1,0 +1,82 @@
+# NOTICE — 第三方資料授權說明
+
+本專案的**程式碼**由本專案作者原創，以 MIT License 釋出。
+但**字典資料（碼表）並非原創**，來自以下第三方專案，需遵守其授權條款。
+
+---
+
+## 1. 速成字表（主要字典來源）
+
+| 項目 | 內容 |
+|------|------|
+| 檔案 | `data/ms_quick.dict.yaml` |
+| 專案 | [philipposkhos/rime-ms-quick](https://github.com/philipposkhos/rime-ms-quick) |
+| 說明 | 「碼表按照 Windows 10 版微軟速成錄入，包括香港增補字符集字元」 |
+| 專案倉庫授權 | 該倉庫未明確標示授權檔（截至取用時） |
+| 概念來源 | 基於 [rime/rime-quick](https://github.com/rime/rime-quick)（**LGPL-3.0**） |
+
+本專案使用方式：讀取該 yaml 的「字 ↔ 兩碼」對應，**保留原表次序**，
+轉換為 `qdict.bin` 二進位格式。
+
+---
+
+## 2. 倉頡單字碼表
+
+| 項目 | 內容 |
+|------|------|
+| 來源 | 《五倉世紀》[www.chinesecj.com](http://www.chinesecj.com) |
+| 整理 | [rime/rime-cangjie](https://github.com/rime/rime-cangjie) |
+| 修訂 | 佛振 (Chen Zheng) 於 2012-04-08 |
+| 授權 | **GPL** |
+
+原文聲明（節錄自 `cangjie5.dict.yaml`）：
+
+```
+# 單字碼表《五倉世紀》來自 www.chinesecj.com
+# 倉頡五代構詞碼碼表 由惜緣兄製作
+# 佛振修訂於 2012-04-08
+# License: GPL
+```
+
+---
+
+## 3. 速成方案概念
+
+| 項目 | 內容 |
+|------|------|
+| 專案 | [rime/rime-quick](https://github.com/rime/rime-quick) |
+| 作者 | 佛振 <chen.sst@gmail.com> |
+| 授權 | **LGPL-3.0** |
+
+---
+
+## 授權相容性結論
+
+因為字典資料源自 **GPL / LGPL** 授權的碼表：
+
+### ⚠️ 若你連同字典一起散布
+
+`qdict.bin`、`data/ms_quick.dict.yaml`，或內嵌字典的 `QuickIME.exe`
+→ **必須以 GPL-3.0 相容方式釋出整個專案**。
+
+**建議做法（最安全）**：整個 repo 採用 **GPL-3.0**。
+
+### ✅ 若你只散布純程式碼
+
+也就是不含 `qdict.bin`、不含 `data/`、不內嵌字典的 `QuickIME.exe`
+→ 程式碼可用 **MIT**。
+
+此時使用者需自行執行 `tools/gen-dict.ps1` 從上游取得字表來產生字典。
+
+---
+
+## 變更記錄
+
+本專案對上述資料的處理：
+
+1. 讀取 `ms_quick.dict.yaml` 的單字條目（略過多字詞組）。
+2. 過濾為 1–2 碼的項目。
+3. **保持原表次序**（不排序、不按字頻重排）。
+4. 以 `tools/gen-dict.ps1` 輸出為 `qdict.bin` 二進位格式。
+
+未修改字表的「字 ↔ 碼」對應內容本身。

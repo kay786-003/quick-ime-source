@@ -1,0 +1,34 @@
+# ---- .NET / 建置產物 ----
+bin/
+obj/
+build/
+dist/
+*.obj
+*.pdb
+*.user
+*.suo
+
+# ---- 由工具產生的字典（可由 tools/gen-dict.ps1 重建）----
+src/qdict.bin
+
+# ---- 注意：releases/ 係故意提交嘅（現成 exe 方便直接下載）----
+# !releases/
+# !releases/**
+
+# ---- 個人設定 ----
+QuickIME.log
+*.log
+settings.ini
+.QuickIME/
+
+# ---- 作業系統 ----
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# ---- 編輯器 ----
+.vs/
+.vscode/
+.idea/
+*.swp
+*~
