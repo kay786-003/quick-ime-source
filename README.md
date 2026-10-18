@@ -43,15 +43,19 @@ QuickIME.exe  (93 KB，字典已內嵌)
 
 ### 檔案校驗
 
-```
-SHA256 (QuickIME.exe) = 0C6E45BD8C3502F589CC3EFFAAD7A83927E954F40011A3B2FAFC4E9EAAFF38F1
-```
+`QuickIME.exe` 是由 CI 即時編譯的，**每次建置的位元組都略有不同**
+（.NET 會嵌入不同的 MVID），所以這裡不寫死單一 SHA256。
+請以 **Release 頁面上傳的那個檔案**為準。
 
-若你下載後想確認檔案未被篡改，可在 PowerShell 執行：
+若你想確認下載到的是否為本專案建置，可在 PowerShell 執行：
 
 ```powershell
 Get-FileHash .\QuickIME.exe -Algorithm SHA256
+.\QuickIME.exe --version      # 應顯示 2.0
+.\QuickIME.exe --selftest     # 應顯示全部 75 項通過
 ```
+
+> `--selftest` 會驗證字典完整性與組字流程，這比比對雜湊更能證明檔案沒問題。
 
 ---
 
