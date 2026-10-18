@@ -5,7 +5,7 @@
 不需要安裝任何輸入法框架，雙擊即用。
 
 ```
-QuickIME.exe  (82 KB，字典已內嵌)
+QuickIME.exe  (93 KB，字典已內嵌)
 ```
 
 ---
@@ -14,8 +14,8 @@ QuickIME.exe  (82 KB，字典已內嵌)
 
 | 下載 | 檔案 | 說明 |
 |------|------|------|
-| **[QuickIME.exe](https://github.com/kay786-003/quick-ime-source/releases/download/v1.0/QuickIME.exe)** | 82 KB | 單一執行檔，雙擊即用（字典已內嵌） |
-| **[QuickIME-v1.0.zip](https://github.com/kay786-003/quick-ime-source/releases/download/v1.0/QuickIME-v1.0.zip)** | 106 KB | exe + 字典 + 使用說明 + 示意圖 |
+| **[QuickIME.exe](https://github.com/kay786-003/quick-ime-source/releases/download/v2.0/QuickIME.exe)** | 單一執行檔，雙擊即用（字典已內嵌） |
+| **[速成輸入法_v2.0.zip](https://github.com/kay786-003/quick-ime-source/releases/download/v2.0/速成輸入法_v2.0.zip)** | exe + 字典 + 使用說明 + 示意圖 |
 
 > 也可以到 **[Releases](https://github.com/kay786-003/quick-ime-source/releases)** 頁面查看所有正式版本。
 
@@ -26,7 +26,7 @@ QuickIME.exe  (82 KB，字典已內嵌)
 1. **用 Releases 頁面** —— `github.com` 的 release 下載通常比 raw 穩定
 2. **用鏡像加速**，例如在連結前加上 `https://ghproxy.net/`：
    ```
-   https://ghproxy.net/https://github.com/kay786-003/quick-ime-source/releases/download/v1.0/QuickIME.exe
+   https://ghproxy.net/https://github.com/kay786-003/quick-ime-source/releases/download/v2.0/QuickIME.exe
    ```
 3. **先下載到 USB 手指**，之後去網吧直接插手指用，不必每次重下載
 
@@ -44,7 +44,7 @@ QuickIME.exe  (82 KB，字典已內嵌)
 ### 檔案校驗
 
 ```
-SHA256 (QuickIME.exe) = 325E489D388EBD57B0643ADA12FABA6766C5DA2BBDDE4C82F874CA50A302FFF8
+SHA256 (QuickIME.exe) = 9AAA29031E35DA1A8DDCA51F9D7137BF9531307A11A0C538C4687EE57D3AE2B8
 ```
 
 若你下載後想確認檔案未被篡改，可在 PowerShell 執行：
@@ -111,9 +111,76 @@ Get-FileHash .\QuickIME.exe -Algorithm SHA256
 - ✅ **空格 = 下一頁**（微軟速成慣例）
 - ✅ 數字鍵 1–9 選字
 - ✅ 連打（打滿兩碼再打字母會自動上屏首選）
-- ✅ Shift 單按切換中／英
+- ✅ **可設定左／右 Shift 單按切換中英**（見下節，打機長按 Shift 不會誤切換）
+- ✅ **符號永遠半形**，可攔住 `Ctrl+空白`（不會誤轉全形）
+- ✅ **系統匣圖示依模式變色**（藍＝中文／灰＝英文／深灰＝暫停）
 - ✅ 系統匣圖示，可暫停／結束
 - ✅ 免安裝、可放 USB 帶著走
+
+---
+
+## 🆕 v2.0 更新重點（打機黨）
+
+v1.0 有一個對打機的人很致命的設計：**單按任何一邊 Shift 都會切換中英**。
+長按左 Shift 跑步，一放開就變成英文，角色突然不受控。
+
+v2.0 全部改掉：
+
+| 問題 | v1.0 | v2.0 |
+|------|------|------|
+| 長按 Shift 跑步 | 放開就切英文 ❌ | 只有**右 Shift** 單按才切換 ✅ |
+| Shift + WASD | 可能誤切換 ❌ | 期間按過其他鍵就**一律不切換** ✅ |
+| 長按不放 | 仍會切換 ❌ | 超過 **0.7 秒**就當長按，不切換 ✅ |
+| 長按期間打中文 | WASD 被吃掉 ❌ | **完全不組字**，鍵盤原樣給遊戲 ✅ |
+| 誤按 `Ctrl+空白` | 可能轉全形 ❌ | **預設攔死**，完全冇反應 ✅ |
+| 打機時睇狀態 | 要讀 tooltip ❌ | 圖示**變色**：藍＝中／灰＝英 ✅ |
+| AppData 被鎖 | **整個程式開唔到** ❌ | 自動退回 exe 同目錄 ✅ |
+
+### 打機用：左右 Shift 分開設定
+
+原本「單按 Shift 就切換中英」對打機的人是個陷阱：
+長按左 Shift 跑步，一放開就變成英文，角色突然不受控。
+
+所以本專案：
+
+- **預設只有「右 Shift」單按才切換中／英**，左 Shift 完全留給遊戲
+- 按住 Shift 期間再按其他鍵（WASD／方向鍵）→ **一律當長按，不切換**
+- 按住超過 **0.7 秒**才放開 → **一律當長按，不切換**
+- 按住 Shift 期間**完全不組字**，鍵盤原樣傳給遊戲
+
+想改的話：右鍵系統匣圖示 → **設定** →
+
+```
+中英切換鍵（單按 Shift）
+  ☐ 左邊 Shift 單按切換中／英
+  ☑ 右邊 Shift 單按切換中／英
+──────────────────────
+☑ 攔住 Ctrl+空白（唔會轉全形符號）
+──────────────────────
+  符號：永遠半形（唔會變全形）
+```
+
+兩邊都不勾 = 完全關閉 Shift 切換（只能按系統匣圖示切換）。
+設定會存到 `%APPDATA%\QuickIME\settings.ini`，刪掉即回覆預設值。
+
+### 符號與全形
+
+本程式**只送 ASCII 半形符號**，不會變成全形（`，。！？`），
+也不提供全形模式 —— 需要全形符號時請用微軟速成或其他輸入法。
+
+`Ctrl+空白` 在微軟速成是「全形／半形」切換，打機緊張時很容易誤按。
+本程式**預設把它完全攔住**（按了完全沒反應，連系統都收不到）；
+可在選單取消勾選，恢復原本行為。
+
+### 系統匣圖示會變色（一眼看狀態）
+
+| 圖示 | 狀態 |
+|------|------|
+| 藍色「**速**」 | 中文模式（速成） |
+| 灰色「**英**」 | 英文模式 |
+| 深灰「**速**」 | 已暫停 |
+
+打機時不用看 tooltip，用眼角瞄一眼顏色就知道現在會不會打出中文。
 
 ### 候選字視窗
 
@@ -135,7 +202,11 @@ Get-FileHash .\QuickIME.exe -Algorithm SHA256
 | `PageDown` / `+` | 下一頁 |
 | `退格鍵` | 刪一個輸入碼 |
 | `Esc` | 取消本次輸入 |
-| `Shift`（單按） | 切換中／英 |
+| `右 Shift`（單按） | 切換中／英（可在選單改成左 Shift／兩邊／關閉） |
+| `Ctrl+空白` | 預設攔住，不會切換全形（可關閉攔截） |
+
+> 長按 Shift（>0.7 秒）或按住期間按過其他鍵，都不會觸發切換。
+> 按住 Shift 期間也完全不組字，鍵盤原樣傳給遊戲。
 
 ### 速成規則
 
@@ -207,10 +278,13 @@ dist\qdict.bin       # 字典（可選，方便自行替換）
 ├── src/
 │   ├── Dict.cs               # 字典引擎（702 bucket 索引）
 │   ├── Composer.cs           # 組字狀態機（與 UI/掛鉤解耦，可單測）
+│   ├── ToggleGate.cs         # 中英切換 / Ctrl+空白 判定（純邏輯，可單測）
 │   ├── Keyboard.cs           # Win32 低階鍵盤掛鉤 + SendInput
 │   ├── CandidateForm.cs      # 候選字視窗（WS_EX_NOACTIVATE）
-│   ├── Program.cs            # 主程式 / 系統匣 / 說明
-│   ├── SelfTest.cs           # 25 項自我測試
+│   ├── Program.cs            # 主程式 / 系統匣 / 設定 / 說明
+│   ├── SelfTest.cs           # 75 項自我測試
+│   ├── GameTest.cs           # 打機情境測試（長按 Shift 不誤切換）
+│   ├── IconShot.cs           # 系統匣圖示截圖
 │   └── UiShot.cs             # 候選窗截圖（離線檢查 UI）
 ├── tools/
 │   ├── gen-dict.ps1          # 由 yaml 產生 qdict.bin
@@ -229,8 +303,10 @@ dist\qdict.bin       # 字典（可選，方便自行替換）
 ### 執行測試
 
 ```powershell
-.\dist\QuickIME.exe --selftest          # 25 項自我測試
+.\dist\QuickIME.exe --selftest          # 75 項自我測試
+.\dist\QuickIME.exe --gametest          # 打機情境測試（長按 Shift + WASD 不誤切換）
 .\dist\QuickIME.exe --uishop shot.png   # 產生候選窗截圖
+.\dist\QuickIME.exe --iconshot .\icons  # 產生三種狀態的系統匣圖示
 .\dist\QuickIME.exe --help
 ```
 

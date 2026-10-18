@@ -1,0 +1,23 @@
+# 一律用 LF 存進 repo，但 checkout 到 Windows 時轉回 CRLF
+* text=auto
+
+# 執行檔與二進位檔：不要做任何換行轉換
+*.exe   binary
+*.bin   binary
+*.png   binary
+*.zip   binary
+
+# 批次檔 / PowerShell 腳本：Windows 用 CRLF
+*.ps1   text eol=crlf
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+
+# 文件：LF
+*.md    text eol=lf
+*.txt   text eol=lf
+*.cs    text eol=lf
+
+# 明確標示 C# 原始碼（GitHub 語言統計才會正確顯示 C#）
+*.cs    linguist-language=C#

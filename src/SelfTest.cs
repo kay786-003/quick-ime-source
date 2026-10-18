@@ -11,15 +11,18 @@ namespace QuickIME
     internal static class SelfTest
     {
         private static int _fail;
+        private static int _total;
 
         private static void Check(bool cond, string what)
         {
+            _total++;
             Console.WriteLine((cond ? "PASS  " : "FAIL  ") + what);
             if (!cond) _fail++;
         }
 
         private static void Eq(string expect, string actual, string what)
         {
+            _total++;
             bool ok = string.Equals(expect, actual, StringComparison.Ordinal);
             Console.WriteLine((ok ? "PASS  " : "FAIL  ") + what +
                               (ok ? "" : "   (expect=[" + expect + "] actual=[" + actual + "])"));
@@ -169,8 +172,130 @@ namespace QuickIME
             Check(dict.Lookup("", 0).Count == 0, "空碼查詢安全傳回空");
             Check(dict.Lookup("zz", 2).Count >= 0, "不存在的碼安全傳回");
 
+            // ---- 中英切換鍵（ToggleGate）----
             Console.WriteLine();
-            Console.WriteLine(_fail == 0 ? "*** 全部 " + 25 + " 項通過 ***" : ("*** 有 " + _fail + " 項失敗 ***"));
+            Console.WriteLine("--- 中英切換鍵（Shift）---");
+
+            var g = new ToggleGate();
+            Check(g.Sides == ShiftToggleSides.Right, "預設只有右 Shift 切換（左 Shift 留給遊戲）");
+            Check(g.IsSideEnabled(ToggleGate.RightSide), "右 Shift 已啟用");
+            Check(!g.IsSideEnabled(ToggleGate.LeftSide), "左 Shift 未啟用");
+
+            // 右 Shift 單按 -> 切換
+            g.ShiftDown(ToggleGate.RightSide, 1000);
+            Check(g.ShiftUp(ToggleGate.RightSide, 1080), "右 Shift 單按 80ms -> 切換");
+
+            // 左 Shift 單按 -> 不切換（遊戲長按情境）
+            g.ShiftDown(ToggleGate.LeftSide, 2000);
+            Check(!g.ShiftUp(ToggleGate.LeftSide, 2080), "左 Shift 單按 -> 不切換（遊戲黨重點）");
+
+            // 右 Shift 單按但期間按過其他鍵 -> 不切換
+            g.ShiftDown(ToggleGate.RightSide, 3000);
+            g.NoteOtherKey();                       // 期間按了 W / A / S / D
+            Check(!g.ShiftUp(ToggleGate.RightSide, 3100), "Shift 期間按過其他鍵 -> 不切換");
+
+            // 右 Shift 長按（>700ms）-> 不切換
+            g.ShiftDown(ToggleGate.RightSide, 4000);
+            Check(!g.ShiftUp(ToggleGate.RightSide, 4000 + ToggleGate.ShiftTapMaxMs + 1),
+                "長按 Shift 超過 " + ToggleGate.ShiftTapMaxMs + "ms -> 不切換");
+
+            // 剛好在邊界（700ms）仍然算單按
+            g.ShiftDown(ToggleGate.RightSide, 5000);
+            Check(g.ShiftUp(ToggleGate.RightSide, 5000 + ToggleGate.ShiftTapMaxMs),
+                "長按 " + ToggleGate.ShiftTapMaxMs + "ms（邊界）仍算單按");
+
+            // 左右都開
+            g.Sides = ShiftToggleSides.Both;
+            g.ShiftDown(ToggleGate.LeftSide, 6000);
+            Check(g.ShiftUp(ToggleGate.LeftSide, 6080), "設定為左右都開 -> 左 Shift 亦可切換");
+            g.ShiftDown(ToggleGate.RightSide, 6200);
+            Check(g.ShiftUp(ToggleGate.RightSide, 6280), "設定為左右都開 -> 右 Shift 亦可切換");
+
+            // 兩邊都關
+            g.Sides = ShiftToggleSides.None;
+            g.ShiftDown(ToggleGate.RightSide, 7000);
+            Check(!g.ShiftUp(ToggleGate.RightSide, 7080), "設定為關閉 -> 任何 Shift 都不切換");
+            Eq("已關閉", ToggleGate.Describe(ShiftToggleSides.None), "選單描述 = 已關閉");
+            Eq("左 + 右 Shift", ToggleGate.Describe(ShiftToggleSides.Both), "選單描述 = 左 + 右 Shift");
+
+            // 同一個 Shift 重複按下不會重設計時（避免連發洗掉判定）
+            g.Sides = ShiftToggleSides.Right;
+            g.Reset();
+            g.ShiftDown(ToggleGate.RightSide, 8000);
+            g.ShiftDown(ToggleGate.RightSide, 8010);       // 系統連發
+            Check(g.ShiftUp(ToggleGate.RightSide, 8070), "按住時的連發不會重設計時（仍算單按）");
+
+            // IsShiftHeld：長按期間唔組字（遊戲跑步重點）
+            g.Reset();
+            Check(!g.IsShiftHeld, "放開後 IsShiftHeld = false");
+            g.ShiftDown(ToggleGate.LeftSide, 9000);
+            Check(g.IsShiftHeld, "按住左 Shift -> IsShiftHeld = true（期間唔組字）");
+            g.ShiftUp(ToggleGate.LeftSide, 9500);
+            Check(!g.IsShiftHeld, "放開後 IsShiftHeld = false");
+
+            // 兩邊一齊按：兩邊都放開都唔會切換（避免混亂）
+            g.Reset();
+            g.Sides = ShiftToggleSides.Both;
+            g.ShiftDown(ToggleGate.LeftSide, 10000);
+            g.ShiftDown(ToggleGate.RightSide, 10020);
+            bool r1 = g.ShiftUp(ToggleGate.LeftSide, 10060);
+            bool r2 = g.ShiftUp(ToggleGate.RightSide, 10080);
+            Check(!(r1 && r2), "兩邊 Shift 同時按 -> 唔會連環切換兩次");
+            Check(!g.IsShiftHeld, "兩邊都放開後 IsShiftHeld = false");
+
+            // ---- Ctrl+空白 攔截 ----
+            Console.WriteLine();
+            Console.WriteLine("--- Ctrl+空白（全形符號）---");
+
+            var cg = new ToggleGate();
+            Check(cg.CtrlSpaceBlocked, "預設攔住 Ctrl+空白");
+            Check(cg.CtrlSpace(true), "Ctrl+空白 按下 -> 攔住");
+            Check(cg.CtrlSpaceHeld, "按住不放（連發）-> 仍然攔住");
+            Check(!cg.CtrlSpace(true), "連發事件不會重複觸發");
+            Check(!cg.CtrlSpace(false), "Ctrl+空白 放開 -> 交回系統");
+
+            cg.CtrlSpaceBlocked = false;
+            Check(!cg.CtrlSpace(true), "關閉攔截 -> Ctrl+空白 完全唔干預");
+            Check(!cg.CtrlSpaceHeld, "關閉攔截 -> 連發亦唔干預");
+
+            // ---- 設定檔（settings.ini）----
+            Console.WriteLine();
+            Console.WriteLine("--- 設定檔持久化 ---");
+
+            var st = new Settings();
+            Check(st.ShiftSides == ShiftToggleSides.Right, "預設設定：只用右 Shift");
+            Check(st.BlockCtrlSpace, "預設設定：攔住 Ctrl+空白");
+
+            st.ShiftSides = ShiftToggleSides.Both;
+            st.BlockCtrlSpace = false;
+            st.ChineseMode = false;
+            st.LastVersionSeen = "2.0";
+            string ini = st.ToIni();
+            Check(ini.Contains("ShiftSides=Both"), "寫出 ShiftSides=Both");
+            Check(ini.Contains("BlockCtrlSpace=0"), "寫出 BlockCtrlSpace=0");
+
+            var st2 = new Settings();
+            st2.Apply(ini.Split(new[] { "\r\n" }, StringSplitOptions.None));
+            Check(st2.ShiftSides == ShiftToggleSides.Both, "讀回 ShiftSides = Both");
+            Check(!st2.BlockCtrlSpace, "讀回 BlockCtrlSpace = false");
+            Check(!st2.ChineseMode, "讀回 ChineseMode = false");
+            Eq("2.0", st2.LastVersionSeen, "讀回 LastVersionSeen");
+
+            // 人手改設定檔（大小寫 / 數字 / 亂值）
+            var st3 = new Settings();
+            st3.Apply(new[] { "ShiftSides=left", "BlockCtrlSpace=1" });
+            Check(st3.ShiftSides == ShiftToggleSides.Left, "人手寫 left（細楷）都讀得明");
+            st3.Apply(new[] { "ShiftSides=NONE" });
+            Check(st3.ShiftSides == ShiftToggleSides.None, "人手寫 NONE 都讀得明");
+            st3.Apply(new[] { "ShiftSides=1" });
+            Check(st3.ShiftSides == ShiftToggleSides.Left, "舊式數字格式 (1) = 左");
+            st3.Apply(new[] { "ShiftSides=垃圾" });
+            Check(st3.ShiftSides == ShiftToggleSides.Right, "亂值 -> 安全回預設（右）");
+
+            Console.WriteLine();
+            Console.WriteLine(_fail == 0
+                ? "*** 全部 " + _total + " 項通過 ***"
+                : ("*** 有 " + _fail + " / " + _total + " 項失敗 ***"));
             return _fail == 0 ? 0 : 1;
         }
 

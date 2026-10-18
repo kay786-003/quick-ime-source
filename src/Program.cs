@@ -18,7 +18,7 @@ namespace QuickIME
     internal static class Program
     {
         internal const string AppName = "速成輸入法";
-        internal const string Version = "1.0";
+        internal const string Version = "2.0";
 
         internal static readonly string LogPath = ResolveLogPath();
 
@@ -76,6 +76,12 @@ namespace QuickIME
                     string outPath = args.Length > 1 ? args[1] : "shot.png";
                     return UiShot.Run(ResolveDictPath(), outPath);
                 }
+                if (args[0] == "--iconshot")
+                {
+                    Application.EnableVisualStyles();
+                    return IconShot.Run(args.Length > 1 ? args[1] : ".");
+                }
+                if (args[0] == "--gametest") return GameTest.Run();
                 if (args[0] == "--diag")
                 {
                     Verbose = true;
@@ -88,6 +94,8 @@ namespace QuickIME
                     Console.WriteLine();
                     Console.WriteLine("  直接執行           啟動輸入法（常駐系統匣）");
                     Console.WriteLine("  --selftest [字典檔] 執行自我測試");
+                    Console.WriteLine("  --gametest         打機情境測試（長按 Shift 不誤切換）");
+                    Console.WriteLine("  --iconshot [資料夾] 產生三種狀態的系統匣圖示");
                     Console.WriteLine("  --diag             啟動並寫出診斷日誌");
                     Console.WriteLine("  --version          顯示版本");
                     return 0;
@@ -176,6 +184,9 @@ namespace QuickIME
         private readonly KeyboardHook _hook;
         private readonly CandidateForm _cand;
         private readonly ToolStripMenuItem _modeItem;
+        private readonly ToolStripMenuItem _shiftLeftItem;
+        private readonly ToolStripMenuItem _shiftRightItem;
+        private readonly ToolStripMenuItem _ctrlSpaceItem;
         private readonly Settings _settings;
 
         public ImeApplication()
@@ -197,6 +208,8 @@ namespace QuickIME
             _composer = new Composer(dict);
             _hook = new KeyboardHook(_composer);
             _hook.ChineseMode = _settings.ChineseMode;
+            _hook.Gate.Sides = _settings.ShiftSides;
+            _hook.Gate.CtrlSpaceBlocked = _settings.BlockCtrlSpace;
 
             _cand = new CandidateForm();
             _cand.Attach(_composer);
@@ -204,10 +217,25 @@ namespace QuickIME
 
             _modeItem = new ToolStripMenuItem("中文模式（速成）", null, (s, e) => ToggleMode());
 
+            // ---- 設定：中英切換鍵 / Ctrl+空白 ----
+            _shiftLeftItem = MakeCheck("左邊 Shift 單按切換中／英", false, (s, e) => ToggleShiftSide(ShiftToggleSides.Left));
+            _shiftRightItem = MakeCheck("右邊 Shift 單按切換中／英", false, (s, e) => ToggleShiftSide(ShiftToggleSides.Right));
+            _ctrlSpaceItem = MakeCheck("攔住 Ctrl+空白（唔會轉全形符號）", false, (s, e) => ToggleCtrlSpace());
+
+            var settingsMenu = new ToolStripMenuItem("設定");
+            settingsMenu.DropDownItems.Add(new ToolStripMenuItem("中英切換鍵（單按 Shift）") { Enabled = false });
+            settingsMenu.DropDownItems.Add(_shiftLeftItem);
+            settingsMenu.DropDownItems.Add(_shiftRightItem);
+            settingsMenu.DropDownItems.Add(new ToolStripSeparator());
+            settingsMenu.DropDownItems.Add(_ctrlSpaceItem);
+            settingsMenu.DropDownItems.Add(new ToolStripSeparator());
+            settingsMenu.DropDownItems.Add(new ToolStripMenuItem("符號：永遠半形（唔會變全形）") { Enabled = false });
+
             var menu = new ContextMenuStrip();
             menu.Items.Add(new ToolStripMenuItem(Program.AppName + "  " + Program.Version) { Enabled = false });
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add(_modeItem);
+            menu.Items.Add(settingsMenu);
             menu.Items.Add(new ToolStripMenuItem("輸入法說明 / 速成碼表", null, (s, e) => ShowHelp()));
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add(new ToolStripMenuItem("暫停輸入法（還原鍵盤）", null, (s, e) => TogglePause()));
@@ -215,7 +243,7 @@ namespace QuickIME
 
             _tray = new NotifyIcon
             {
-                Icon = BuildIcon(),
+                Icon = BuildIcon(_settings.ChineseMode, false),
                 Text = Program.AppName + " " + Program.Version + "（速成）",
                 Visible = true,
                 ContextMenuStrip = menu
@@ -224,8 +252,17 @@ namespace QuickIME
             _tray.MouseClick += (s, e) => { if (e.Button == MouseButtons.Left) ToggleMode(); };
             Program.Log("ctor: tray created");
 
+            SyncSettingsMenu();
             UpdateTray();
             Program.Log("ctor: done");
+        }
+
+        private static ToolStripMenuItem MakeCheck(string text, bool value, EventHandler onClick)
+        {
+            var item = new ToolStripMenuItem(text, null, onClick);
+            item.Checked = value;
+            item.CheckOnClick = false;   // 自己控制，避免點一下就被 Toggle 兩次
+            return item;
         }
 
         private Dict LoadDict()
@@ -245,6 +282,39 @@ namespace QuickIME
             _settings.CheckVersionNotice();
         }
 
+        // ------------------------------------------------------------------
+        //  設定項
+        // ------------------------------------------------------------------
+        private void ToggleShiftSide(ShiftToggleSides side)
+        {
+            _hook.Gate.Sides = _hook.Gate.Sides ^ side;
+            _settings.ShiftSides = _hook.Gate.Sides;
+            _settings.Save();
+            SyncSettingsMenu();
+            Program.Log("settings: shift sides = " + _hook.Gate.Sides);
+        }
+
+        private void ToggleCtrlSpace()
+        {
+            _hook.Gate.CtrlSpaceBlocked = !_hook.Gate.CtrlSpaceBlocked;
+            _settings.BlockCtrlSpace = _hook.Gate.CtrlSpaceBlocked;
+            _settings.Save();
+            SyncSettingsMenu();
+            Program.Log("settings: block ctrl+space = " + _hook.Gate.CtrlSpaceBlocked);
+        }
+
+        private void SyncSettingsMenu()
+        {
+            _shiftLeftItem.Checked = _hook.Gate.IsSideEnabled(ToggleGate.LeftSide);
+            _shiftRightItem.Checked = _hook.Gate.IsSideEnabled(ToggleGate.RightSide);
+            _ctrlSpaceItem.Checked = _hook.Gate.CtrlSpaceBlocked;
+
+            string hint = ToggleGate.Describe(_hook.Gate.Sides);
+            _tray.Text = _paused
+                ? Program.AppName + "（已暫停）"
+                : Program.AppName + "（" + (_hook.ChineseMode ? "速成" : "英文") + "／" + hint + "）";
+        }
+
         private void ToggleMode()
         {
             _hook.ChineseMode = !_hook.ChineseMode;
@@ -257,7 +327,7 @@ namespace QuickIME
         {
             _paused = !_paused;
             _hook.Enabled = !_paused;
-            if (_paused) { _composer.Reset(); _cand.Hide(); }
+            if (_paused) { _composer.Reset(); _cand.Hide(); _hook.Gate.Reset(); }
             UpdateTray();
         }
 
@@ -278,7 +348,8 @@ namespace QuickIME
                 _tray.Text = Program.AppName + "（英文模式）";
                 _modeItem.Text = "切換到中文模式（速成）";
             }
-            _tray.Icon = BuildIcon();
+            SyncSettingsMenu();
+            _tray.Icon = BuildIcon(_hook.ChineseMode, _paused);
         }
 
         private void ShowHelp()
@@ -322,19 +393,41 @@ namespace QuickIME
             sb.AppendLine("  PageDown / + 下一頁（與空白鍵相同）");
             sb.AppendLine("  退格鍵      刪一個輸入碼");
             sb.AppendLine("  Esc         取消這次輸入");
-            sb.AppendLine("  Shift（單按）切換中／英文");
+            sb.AppendLine("  右 Shift（單按）切換中／英文");
+            sb.AppendLine();
+            sb.AppendLine("【中英切換鍵：點解只用右 Shift】");
+            sb.AppendLine("  打機時長按 Shift 跑步是常態，若放開 Shift 就切換成英文，");
+            sb.AppendLine("  角色就會突然不受控。所以本程式：");
+            sb.AppendLine("    * 預設只有「右 Shift」單按才切換中／英（左 Shift 留給遊戲）");
+            sb.AppendLine("    * 按住 Shift 期間再按其他鍵（WASD / 方向鍵）→ 一律當長按，不切換");
+            sb.AppendLine("    * 按住超過 0.7 秒才放開 → 一律當長按，不切換");
+            sb.AppendLine("    * 按住 Shift 期間完全不組字，鍵盤原樣傳給遊戲");
+            sb.AppendLine("  想左右都可以切換（或者兩邊都關掉），右鍵圖示 → 設定 →");
+            sb.AppendLine("  「左邊 / 右邊 Shift 單按切換中／英」。");
+            sb.AppendLine();
+            sb.AppendLine("【符號：永遠半形】");
+            sb.AppendLine("  本程式只送 ASCII 半形符號（, . ! ?），不會變成全形（，。！？）。");
+            sb.AppendLine("  想打全形符號時，請用 Windows 的「微軟速成」或直接切換到其他輸入法。");
+            sb.AppendLine();
+            sb.AppendLine("【Ctrl+空白：預設攔住】");
+            sb.AppendLine("  Ctrl+空白 在微軟速成是「全形／半形」切換，打機緊張時很容易誤按。");
+            sb.AppendLine("  本程式預設把它完全攔住（按了完全沒反應）。");
+            sb.AppendLine("  想恢復原本的 Ctrl+空白 行為：右鍵圖示 → 設定 → 取消勾選那一項。");
             sb.AppendLine();
             sb.AppendLine("【連打】打滿兩個碼後再打字母，會自動送出第一個字，然後繼續打，");
             sb.AppendLine("        所以你可以一路打「abcdef...」連續出字。");
             sb.AppendLine();
             sb.AppendLine("【系統匣圖示】");
             sb.AppendLine("  按一下 / 雙擊  = 中英文切換");
-            sb.AppendLine("  右鍵          = 選單（切換模式、暫停、結束）");
+            sb.AppendLine("  右鍵          = 選單（切換模式、設定、暫停、結束）");
             sb.AppendLine();
             sb.AppendLine("【如果打不到字】");
             sb.AppendLine("  - 遊戲若以「管理員身分」執行，本程式也要用管理員身分執行才能攔到鍵盤。");
             sb.AppendLine("  - 全螢幕獨佔（DirectX exclusive）遊戲可能攔不到，請用視窗模式。");
             sb.AppendLine("  - 防毒軟體可能詢問鍵盤掛鉤，請選「允許」。");
+            sb.AppendLine();
+            sb.AppendLine("【設定檔】");
+            sb.AppendLine("  %APPDATA%\\QuickIME\\settings.ini，刪掉即回覆預設值。");
             return sb.ToString();
         }
 
@@ -348,11 +441,26 @@ namespace QuickIME
             ExitThread();
         }
 
-        /// <summary>動態畫一個「速」字圖示（快取，避免每次重建造成 GDI handle 洩漏）。</summary>
-        private static Icon _iconCache;
-        private static Icon BuildIcon()
+        /// <summary>
+        /// 動態畫一個「速」字圖示。
+        /// 顏色代表狀態，打機時用眼角瞄一眼就知：
+        ///   藍 = 中文模式　灰 = 英文模式　深灰 = 已暫停
+        /// 每個狀態各快取一個 Icon，避免每次重建造成 GDI handle 洩漏。
+        /// </summary>
+        private static readonly Icon[] _iconCache = new Icon[3];
+
+        private const int IconCn = 0;
+        private const int IconEn = 1;
+        private const int IconPaused = 2;
+
+        private static Icon BuildIcon(bool chinese, bool paused)
         {
-            if (_iconCache != null) return _iconCache;
+            int slot = paused ? IconPaused : (chinese ? IconCn : IconEn);
+            if (_iconCache[slot] != null) return _iconCache[slot];
+
+            Color bg = paused ? Color.FromArgb(128, 128, 128)
+                     : (chinese ? Color.FromArgb(0, 120, 215) : Color.FromArgb(150, 155, 160));
+            string text = chinese ? "速" : "英";
             try
             {
                 using (var bmp = new Bitmap(32, 32))
@@ -361,24 +469,24 @@ namespace QuickIME
                     g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
                     g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
                     g.Clear(Color.Transparent);
-                    using (var bg = new SolidBrush(Color.FromArgb(0, 120, 215)))
-                        g.FillEllipse(bg, 0, 0, 31, 31);
+                    using (var brush = new SolidBrush(bg))
+                        g.FillEllipse(brush, 0, 0, 31, 31);
                     using (var f = new Font("Microsoft JhengHei", 17f, FontStyle.Bold, GraphicsUnit.Pixel))
                     using (var fg = new SolidBrush(Color.White))
                     {
                         var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
-                        g.DrawString("速", f, fg, new RectangleF(0, 0, 32, 32), sf);
+                        g.DrawString(text, f, fg, new RectangleF(0, 0, 32, 32), sf);
                     }
                     IntPtr h = bmp.GetHicon();
-                    _iconCache = (Icon)Icon.FromHandle(h).Clone();
+                    _iconCache[slot] = (Icon)Icon.FromHandle(h).Clone();
                     DestroyIcon(h);
-                    return _iconCache;
+                    return _iconCache[slot];
                 }
             }
             catch
             {
-                _iconCache = SystemIcons.Application;
-                return _iconCache;
+                _iconCache[slot] = SystemIcons.Application;
+                return _iconCache[slot];
             }
         }
 
@@ -403,13 +511,38 @@ namespace QuickIME
         public bool ChineseMode = true;
         public string LastVersionSeen = "";
 
+        /// <summary>哪幾邊的 Shift 單按會切換中／英。預設只用右邊。</summary>
+        public ShiftToggleSides ShiftSides = ShiftToggleSides.Right;
+
+        /// <summary>攔住 Ctrl+空白（唔會轉全形符號）。預設開。</summary>
+        public bool BlockCtrlSpace = true;
+
+        /// <summary>
+        /// 設定檔路徑。若 AppData 被鎖（網吧 / 受管制電腦常見）就回傳 null，
+        /// 之後一律當「冇設定檔」處理 —— 寧願唔記得設定，都唔可以開唔到程式。
+        /// </summary>
         private static string PathFile
         {
             get
             {
-                string dir = System.IO.Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "QuickIME");
-                System.IO.Directory.CreateDirectory(dir);
+                string dir = null;
+                try
+                {
+                    dir = System.IO.Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "QuickIME");
+                    System.IO.Directory.CreateDirectory(dir);
+                }
+                catch
+                {
+                    // 退而求其次：放在 exe 同一個資料夾（USB 手指情境通常可寫）
+                    try
+                    {
+                        dir = System.IO.Path.Combine(
+                            System.IO.Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), "QuickIME");
+                        System.IO.Directory.CreateDirectory(dir);
+                    }
+                    catch { return null; }
+                }
                 return System.IO.Path.Combine(dir, "settings.ini");
             }
         }
@@ -420,30 +553,74 @@ namespace QuickIME
             try
             {
                 string p = PathFile;
-                if (File.Exists(p))
-                {
-                    foreach (string line in File.ReadAllLines(p))
-                    {
-                        int i = line.IndexOf('=');
-                        if (i <= 0) continue;
-                        string k = line.Substring(0, i).Trim();
-                        string v = line.Substring(i + 1).Trim();
-                        if (k == "ChineseMode") s.ChineseMode = (v != "0");
-                        else if (k == "LastVersionSeen") s.LastVersionSeen = v;
-                    }
-                }
+                if (p == null) return s;
+                if (!File.Exists(p)) return s;
+                s.Apply(File.ReadAllLines(p));
             }
             catch { }
             return s;
+        }
+
+        /// <summary>
+        /// 由文字內容載入設定（與檔案解耦，方便 --selftest 驗證格式）。
+        /// </summary>
+        public void Apply(string[] lines)
+        {
+            if (lines == null) return;
+            foreach (string line in lines)
+            {
+                if (line == null) continue;
+                int i = line.IndexOf('=');
+                if (i <= 0) continue;
+                string k = line.Substring(0, i).Trim();
+                string v = line.Substring(i + 1).Trim();
+                if (k == "ChineseMode") ChineseMode = (v != "0");
+                else if (k == "LastVersionSeen") LastVersionSeen = v;
+                else if (k == "ShiftSides") ShiftSides = ParseSides(v);
+                else if (k == "BlockCtrlSpace") BlockCtrlSpace = (v != "0");
+            }
+        }
+
+        /// <summary>序列化成 settings.ini 的內容。</summary>
+        public string ToIni()
+        {
+            return "ChineseMode=" + (ChineseMode ? "1" : "0") + "\r\n" +
+                   "ShiftSides=" + FormatSides(ShiftSides) + "\r\n" +
+                   "BlockCtrlSpace=" + (BlockCtrlSpace ? "1" : "0") + "\r\n" +
+                   "LastVersionSeen=" + LastVersionSeen + "\r\n";
+        }
+
+        public static ShiftToggleSides ParseSides(string v)
+        {
+            // 寫成 Left / Right / Both / None，人手改都易明
+            switch ((v ?? "").Trim().ToLowerInvariant())
+            {
+                case "left": return ShiftToggleSides.Left;
+                case "right": return ShiftToggleSides.Right;
+                case "both": return ShiftToggleSides.Both;
+                case "none": return ShiftToggleSides.None;
+            }
+            int n;
+            if (int.TryParse(v, out n))
+                return (ShiftToggleSides)(n & (int)ShiftToggleSides.Both);
+            return ShiftToggleSides.Right;
+        }
+
+        public static string FormatSides(ShiftToggleSides sides)
+        {
+            if (sides == ShiftToggleSides.Both) return "Both";
+            if (sides == ShiftToggleSides.Left) return "Left";
+            if (sides == ShiftToggleSides.Right) return "Right";
+            return "None";
         }
 
         public void Save()
         {
             try
             {
-                File.WriteAllText(PathFile,
-                    "ChineseMode=" + (ChineseMode ? "1" : "0") + "\r\n" +
-                    "LastVersionSeen=" + LastVersionSeen + "\r\n", new UTF8Encoding(false));
+                string p = PathFile;
+                if (p == null) return;
+                File.WriteAllText(p, ToIni(), new UTF8Encoding(false));
             }
             catch { }
         }
@@ -455,7 +632,7 @@ namespace QuickIME
             Save();
             ShellNotify.Show(
                 Program.AppName + " 已啟動",
-                "按右下角「速」圖示可切換中／英。按此看使用說明。");
+                "右 Shift 單按 = 切換中／英（可在右鍵選單改）。符號永遠半形，Ctrl+空白已攔住。");
         }
     }
 

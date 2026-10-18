@@ -48,6 +48,10 @@ namespace QuickIME
             Enabled = false;          // 不接受任何輸入
             Cursor = Cursors.Default;
 
+            // WS_EX_NOACTIVATE 只在 Form 未建立前設定才有效（CreateParams 已加），
+            // 另外用 ShowWithoutActivation 保證 Show() 都唔會搶焦點。
+            SetStyle(ControlStyles.Selectable, false);
+
             _fontChar = new Font("Microsoft JhengHei UI", 17f, FontStyle.Regular, GraphicsUnit.Pixel);
             _fontSmall = new Font("Microsoft JhengHei UI", 11.5f, FontStyle.Regular, GraphicsUnit.Pixel);
             _centered = new StringFormat

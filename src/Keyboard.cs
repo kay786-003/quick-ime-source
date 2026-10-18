@@ -148,6 +148,13 @@ namespace QuickIME
 
         [DllImport("user32.dll")]
         public static extern IntPtr GetFocus();
+
+        /// <summary>
+        /// 單調遞增的毫秒計時（由系統啟動起算），用於判斷 Shift 按了多久。
+        /// 刻意不用 Environment.TickCount（會溢位成負數，令長按判定出錯）。
+        /// </summary>
+        [DllImport("kernel32.dll")]
+        public static extern ulong GetTickCount64();
     }
 
     /// <summary>送出 Unicode 文字到前景視窗（不經剪貼簿）。</summary>
@@ -211,13 +218,16 @@ namespace QuickIME
     internal sealed class KeyboardHook : IDisposable
     {
         private readonly Composer _composer;
+        private readonly ToggleGate _gate = new ToggleGate();
         private Native.LowLevelKeyboardProc _proc;   // 必須保留參考，否則會被 GC 回收
         private IntPtr _hook = IntPtr.Zero;
-        private bool _shiftAloneDown;                // Shift 按下且未與其他鍵同按
 
         public bool Enabled { get; set; }
         public bool ChineseMode { get; set; }
         public event EventHandler ModeChanged;
+
+        /// <summary>中英切換 / Ctrl+空白 的設定（由系統匣選單控制）。</summary>
+        public ToggleGate Gate { get { return _gate; } }
 
         public KeyboardHook(Composer composer)
         {
@@ -260,6 +270,32 @@ namespace QuickIME
             return (Native.GetAsyncKeyState(vk) & 0x8000) != 0;
         }
 
+        /// <summary>把 VK_SHIFT / VK_LSHIFT / VK_RSHIFT 統一成「左 / 右」。</summary>
+        private static int ShiftSideOf(uint vk)
+        {
+            if (vk == Native.VK_LSHIFT) return ToggleGate.LeftSide;
+            if (vk == Native.VK_RSHIFT) return ToggleGate.RightSide;
+            if (vk != Native.VK_SHIFT) return ToggleGate.NoSide;
+            // 有些鍵盤 / 遠端桌面會送出通用的 VK_SHIFT，用實際按鍵狀態判斷是哪一邊
+            if (IsDown(Native.VK_LSHIFT)) return ToggleGate.LeftSide;
+            if (IsDown(Native.VK_RSHIFT)) return ToggleGate.RightSide;
+            return ToggleGate.NoSide;
+        }
+
+        private static int NowMs()
+        {
+            return (int)(Native.GetTickCount64() & 0x7FFFFFFF);
+        }
+
+        /// <summary>
+        /// 系統層面「Shift 是否真的按住」。只用來校正漏收 keyup 的情況，
+        /// 正常判斷一律靠 ToggleGate 自己記錄（低階掛鉤內 GetAsyncKeyState 時序不可靠）。
+        /// </summary>
+        private static bool ShiftActuallyDown()
+        {
+            return IsDown(Native.VK_SHIFT) || IsDown(Native.VK_LSHIFT) || IsDown(Native.VK_RSHIFT);
+        }
+
         private char ToLowerLetter(uint vk)
         {
             if (vk >= 'A' && vk <= 'Z') return (char)('a' + (vk - 'A'));
@@ -275,30 +311,38 @@ namespace QuickIME
 
         private IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
         {
-            if (nCode < 0 || !Enabled)
+            if (nCode < 0)
                 return Native.CallNextHookEx(_hook, nCode, wParam, lParam);
 
             int msg = (int)wParam;
 
-            // ---- Shift 單按放開 = 中英切換 ----
-            // 注意：一定要放行這個 keyup，否則 Shift+字母（打大寫）會卡住 Shift 狀態。
+            // ---- KeyUp ----
             if (msg == Native.WM_KEYUP || msg == Native.WM_SYSKEYUP)
             {
                 var upInfo = (Native.KBDLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(Native.KBDLLHOOKSTRUCT));
                 uint upVk = upInfo.vkCode;
-                if (upVk == Native.VK_SHIFT || upVk == Native.VK_LSHIFT || upVk == Native.VK_RSHIFT)
+
+                // 自己注入的按鍵一律放行
+                if (upInfo.dwExtraInfo == Typist.Magic)
+                    return Native.CallNextHookEx(_hook, nCode, wParam, lParam);
+
+                if (!Enabled)
+                    return Native.CallNextHookEx(_hook, nCode, wParam, lParam);
+
+                // Ctrl+空白：按住不放 / 連發都唔會重複觸發，只認「按完」這一下
+                if (upVk == Native.VK_SPACE)
+                    _gate.CtrlSpace(false);
+
+                // ---- Shift 單按放開 = 中英切換 ----
+                // 注意：一定要放行這個 keyup，否則 Shift+字母（打大寫）會卡住 Shift 狀態。
+                int side = ShiftSideOf(upVk);
+                if (side != ToggleGate.NoSide && _gate.ShiftUp(side, NowMs()))
                 {
-                    if (_shiftAloneDown)
-                    {
-                        _shiftAloneDown = false;
-                        ChineseMode = !ChineseMode;
-                        RaiseModeChanged();
-                        Program.Log("shift alone -> toggle cn=" + ChineseMode);
-                    }
-                }
-                else
-                {
-                    _shiftAloneDown = false;
+                    ChineseMode = !ChineseMode;
+                    if (!ChineseMode) _composer.Reset();
+                    RaiseModeChanged();
+                    Program.Log("shift(" + (side == ToggleGate.LeftSide ? "L" : "R") +
+                                ") tap -> toggle cn=" + ChineseMode);
                 }
                 return Native.CallNextHookEx(_hook, nCode, wParam, lParam);
             }
@@ -316,24 +360,75 @@ namespace QuickIME
             }
 
             uint vk = info.vkCode;
-            Program.Log("hook: vk=" + vk + " composing=" + _composer.IsComposing + " cn=" + ChineseMode);
 
-            // 有 Ctrl / Alt / Win 鍵按著 -> 交回系統（保留快捷鍵）
             bool ctrl = IsDown(Native.VK_CONTROL) || IsDown(Native.VK_LCONTROL) || IsDown(Native.VK_RCONTROL);
             bool alt = IsDown(Native.VK_MENU) || IsDown(Native.VK_LMENU) || IsDown(Native.VK_RMENU);
             bool win = IsDown(0x5B) || IsDown(0x5C);
-            if (ctrl || alt || win)
+
+            // ---- Ctrl+空白 ----
+            // 微軟速成會用它在「全形／半形符號」之間切換，打機緊張時很容易誤按。
+            // 預設完全攔死（連系統都收唔到）；關掉之後就完全唔干預，交回系統。
+            // 注意：一定要真係有按 Ctrl 才算，否則普通空白鍵會被吞掉。
+            if (vk == Native.VK_SPACE)
+            {
+                if (ctrl)
+                {
+                    if (_gate.CtrlSpace(true) || _gate.CtrlSpaceHeld)
+                    {
+                        Program.Log("hook: ctrl+space blocked");
+                        return (IntPtr)1;
+                    }
+                }
+                _gate.CtrlSpace(false);
+            }
+            else
+            {
+                _gate.CtrlSpace(false);
+            }
+
+            if (!Enabled)
                 return Native.CallNextHookEx(_hook, nCode, wParam, lParam);
 
-            // ---- Shift 單按 = 中英切換（用 keyup 偵測，避免與 Shift+字母 衝突）----
-            bool shiftDown = IsDown(Native.VK_SHIFT) || IsDown(Native.VK_LSHIFT) || IsDown(Native.VK_RSHIFT);
-            if (vk == Native.VK_SHIFT || vk == Native.VK_LSHIFT || vk == Native.VK_RSHIFT)
+            Program.Log("hook: vk=" + vk + " composing=" + _composer.IsComposing + " cn=" + ChineseMode);
+
+            // ---- Shift 按下：記錄時間，等放開時判斷係「單按」定「長按」----
+            int shiftSide = ShiftSideOf(vk);
+            if (shiftSide != ToggleGate.NoSide)
             {
-                _shiftAloneDown = true;
+                _gate.ShiftDown(shiftSide, NowMs());
                 return Native.CallNextHookEx(_hook, nCode, wParam, lParam);
             }
-            // 只要有其他鍵在 Shift 按住期間按下，就取消「單按」判定
-            if (shiftDown) _shiftAloneDown = false;
+
+            // 任何其他鍵按下 → 呢次 Shift 就唔再算「單按」
+            _gate.NoteOtherKey();
+
+            // ---- 長按 Shift 期間：完全唔組字，鍵盤交回原生 ----
+            // 打機長按 Shift 跑步時，WASD 一定要傳到遊戲，所以這裡直接放行。
+            // （Shift 長期按住亦唔會切換中英，見 ToggleGate 的長按判定。）
+            if (_gate.IsShiftHeld)
+            {
+                // 安全網：若系統實際已經冇按住 Shift（掛鉤漏收 keyup），
+                // 就校正狀態，否則會永遠打不到中文字。
+                if (!ShiftActuallyDown())
+                {
+                    _gate.ResetShift();
+                    Program.Log("hook: shift state desync -> reset");
+                }
+                else
+                {
+                    if (!ctrl && !alt && !win && _composer.IsComposing)
+                    {
+                        string first = _composer.FirstCandidate();
+                        if (!string.IsNullOrEmpty(first)) { _composer.Commit(first); Flush(); }
+                        else _composer.Cancel();
+                    }
+                    return Native.CallNextHookEx(_hook, nCode, wParam, lParam);
+                }
+            }
+
+            // 有 Ctrl / Alt / Win 鍵按著 -> 交回系統（保留快捷鍵）
+            if (ctrl || alt || win)
+                return Native.CallNextHookEx(_hook, nCode, wParam, lParam);
 
             // ---- 組字中 ----
             if (_composer.IsComposing)
