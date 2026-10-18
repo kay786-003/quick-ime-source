@@ -94,7 +94,15 @@ jobs:
 
           Copy-Item .\dist\QuickIME.exe .\releases\QuickIME.exe -Force
 
-          git add releases/QuickIME.exe
+          $checksum = (Get-FileHash .\releases\QuickIME.exe -Algorithm SHA256).Hash
+          $readmePath = Join-Path $PWD 'README.md'
+          $readme = [System.IO.File]::ReadAllText($readmePath, [System.Text.Encoding]::UTF8)
+          $pattern = 'SHA256 \(QuickIME\.exe\) = [A-Fa-f0-9]{64}'
+          if ($readme -notmatch $pattern) { throw 'README.md QuickIME.exe checksum line not found' }
+          $readme = [regex]::Replace($readme, $pattern, "SHA256 (QuickIME.exe) = $checksum")
+          [System.IO.File]::WriteAllText($readmePath, $readme, [System.Text.UTF8Encoding]::new($false))
+
+          git add releases/QuickIME.exe README.md
           git diff --cached --quiet
           if ($LASTEXITCODE -eq 0) {
             Write-Host "releases/QuickIME.exe 無變化，略過 commit"
