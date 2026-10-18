@@ -34,9 +34,10 @@ jobs:
       - name: Smoke test the packaged exe
         shell: pwsh
         run: |
-          $out = & .\dist\QuickIME.exe --selftest 2>&1
-          $out | Write-Host
-          if ($LASTEXITCODE -ne 0) { throw "selftest failed" }
+          $process = Start-Process -FilePath .\dist\QuickIME.exe `
+            -ArgumentList '--selftest' -NoNewWindow -PassThru -Wait
+          Write-Host "Packaged exe selftest exit code: $($process.ExitCode)"
+          if ($process.ExitCode -ne 0) { throw "selftest failed" }
 
       - name: Show checksums
         shell: pwsh
