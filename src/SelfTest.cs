@@ -301,6 +301,25 @@ namespace QuickIME
             st5.Apply(st4.ToIni().Split(new[] { "\r\n" }, StringSplitOptions.None));
             Check(!st5.AssocEnabled, "讀回 AssocEnabled = false");
 
+            // 記錄習慣開關（預設開；與聯想字開關互相獨立）
+            Check(new Settings().AssocLearnEnabled, "預設開啟「記錄用字習慣」");
+            var st6 = new Settings();
+            st6.AssocLearnEnabled = false;
+            Check(st6.ToIni().Contains("AssocLearnEnabled=0"), "寫出 AssocLearnEnabled=0");
+            var st7 = new Settings();
+            st7.Apply(st6.ToIni().Split(new[] { "\r\n" }, StringSplitOptions.None));
+            Check(!st7.AssocLearnEnabled, "讀回 AssocLearnEnabled = false");
+
+            // 兩個開關互不影響：只關學習，聯想仍然開
+            var st8 = new Settings();
+            st8.AssocLearnEnabled = false;
+            Check(st8.AssocEnabled, "關掉記錄習慣後，聯想字仍然開啟（兩者獨立）");
+
+            // 舊設定檔（v2.1，冇 AssocLearnEnabled 這一行）→ 學習預設仍然開
+            var st9 = new Settings();
+            st9.Apply(new[] { "ChineseMode=1", "AssocEnabled=1" });
+            Check(st9.AssocLearnEnabled, "舊設定檔冇呢一行 -> 學習預設開啟（相容 v2.1）");
+
             // ---- 聯想字（Assoc）----
             RunAssocTests(dict);
 
@@ -406,6 +425,40 @@ namespace QuickIME
             f2.LoadMemoryText(memText);
             Eq("2", f2.LearnedPairs.ToString(), "由文字載入 -> 學到 2 組");
             Eq("係", f2.Lookup("你", "")[0], "載入後排序保持：『係』仍然第一");
+
+            // ---- 「記錄習慣」關掉後：唔會再學，但舊記憶仍然有效 ----
+            var learnAssoc = new Assoc();
+            learnAssoc.LoadSeed("你 好 嗎\n");
+            var learnHook = new KeyboardHook(new Composer(dict));
+            learnHook.InitAssoc(learnAssoc, delegate { });   // 模擬 Program 的初始化
+            try
+            {
+                Check(learnHook.AssocEnabled && learnHook.AssocLearnEnabled,
+                    "InitAssoc 之後預設：聯想開、記錄習慣開");
+                Check(learnHook.ShouldLearn, "兩者都開 -> 會學習");
+
+                learnHook.AssocLearnEnabled = false;
+                Check(learnHook.AssocEnabled, "只關記錄習慣 -> 聯想仍然開（仍然會顯示）");
+                Check(!learnHook.ShouldLearn, "關掉記錄習慣 -> 不再學習");
+
+                learnHook.AssocLearnEnabled = true;
+                learnHook.AssocEnabled = false;
+                Check(!learnHook.ShouldLearn, "關掉聯想字 -> 亦不會學習");
+            }
+            finally
+            {
+                learnHook.DisposeAssoc();
+            }
+
+            // 舊記憶保留：關掉學習不會清走已學的排序
+            var keep = new Assoc();
+            keep.LoadSeed("你 好 嗎\n");
+            for (int i = 0; i < 5; i++) keep.Learn("你", "嗎");
+            Eq("嗎", keep.Lookup("你", "")[0], "學習期間：『嗎』排第一");
+            Eq("1", keep.LearnedPairs.ToString(), "已有 1 組記憶");
+            // 模擬「關掉學習」：不再呼叫 Learn，但舊記憶仍然存在
+            Eq("嗎", keep.Lookup("你", "")[0], "關掉學習之後，舊記憶仍然照舊排序");
+            Eq("1", keep.LearnedPairs.ToString(), "關掉學習不會刪除已有的記憶");
 
             // ---- 壞檔容錯 ----
             var g2 = new Assoc();

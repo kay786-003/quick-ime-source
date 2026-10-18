@@ -18,7 +18,7 @@ namespace QuickIME
     internal static class Program
     {
         internal const string AppName = "速成輸入法";
-        internal const string Version = "2.1";
+        internal const string Version = "2.2";
 
         internal static readonly string LogPath = ResolveLogPath();
 
@@ -189,6 +189,7 @@ namespace QuickIME
         private readonly ToolStripMenuItem _shiftRightItem;
         private readonly ToolStripMenuItem _ctrlSpaceItem;
         private readonly ToolStripMenuItem _assocItem;
+        private readonly ToolStripMenuItem _assocLearnItem;
         private readonly ToolStripMenuItem _assocClearItem;
         private readonly Settings _settings;
 
@@ -228,7 +229,9 @@ namespace QuickIME
             _assoc.LoadMemory(Settings.AssocFilePath);
             _hook.InitAssoc(_assoc, delegate { SaveAssoc(); });
             _hook.AssocEnabled = _settings.AssocEnabled;
-            Program.Log("ctor: assoc loaded, pairs=" + _assoc.LearnedPairs);
+            _hook.AssocLearnEnabled = _settings.AssocLearnEnabled;
+            Program.Log("ctor: assoc loaded, pairs=" + _assoc.LearnedPairs +
+                        ", learn=" + _settings.AssocLearnEnabled);
 
             // 聯想窗跟隨掛鉤狀態重畫
             _hook.AssocChanged += (s, e) =>
@@ -250,6 +253,7 @@ namespace QuickIME
             _shiftRightItem = MakeCheck("右邊 Shift 單按切換中／英", false, (s, e) => ToggleShiftSide(ShiftToggleSides.Right));
             _ctrlSpaceItem = MakeCheck("攔住 Ctrl+空白（唔會轉全形符號）", false, (s, e) => ToggleCtrlSpace());
             _assocItem = MakeCheck("聯想字（打完字自動提示下一個字）", false, (s, e) => ToggleAssoc());
+            _assocLearnItem = MakeCheck("記錄用字習慣（常用的組合排更前）", false, (s, e) => ToggleAssocLearn());
 
             var settingsMenu = new ToolStripMenuItem("設定");
             settingsMenu.DropDownItems.Add(new ToolStripMenuItem("中英切換鍵（單按 Shift）") { Enabled = false });
@@ -268,6 +272,8 @@ namespace QuickIME
             assocMenu.DropDownItems.Add(new ToolStripMenuItem("打完一個字，列出你接住最常打嘅字") { Enabled = false });
             assocMenu.DropDownItems.Add(new ToolStripSeparator());
             assocMenu.DropDownItems.Add(_assocItem);
+            assocMenu.DropDownItems.Add(_assocLearnItem);
+            assocMenu.DropDownItems.Add(new ToolStripSeparator());
             assocMenu.DropDownItems.Add(_assocClearItem);
 
             var menu = new ContextMenuStrip();
@@ -378,6 +384,31 @@ namespace QuickIME
             Program.Log("settings: assoc = " + _settings.AssocEnabled);
         }
 
+        /// <summary>
+        /// 切換「記錄用字習慣」。
+        ///
+        /// 關掉只是「唔再學新嘅」，已學到的記憶仍然保留、亦仍然會用來排序。
+        /// 這樣用家可以「暫停學習」而不失去之前的成果；想真正清走記憶就用「清空」。
+        /// </summary>
+        private void ToggleAssocLearn()
+        {
+            _settings.AssocLearnEnabled = !_settings.AssocLearnEnabled;
+            _hook.AssocLearnEnabled = _settings.AssocLearnEnabled;
+            _settings.Save();
+
+            // 關掉學習時，先把未寫入的記憶存好，避免暫停前最後幾筆遺失
+            if (!_settings.AssocLearnEnabled) _hook.FlushAssocSave();
+
+            SyncSettingsMenu();
+            Program.Log("settings: assoc learn = " + _settings.AssocLearnEnabled);
+
+            ShellNotify.Show(
+                Program.AppName + " - 記錄用字習慣" + (_settings.AssocLearnEnabled ? "已開啟" : "已關閉"),
+                _settings.AssocLearnEnabled
+                    ? "你打過的組合會重新學習，常用的排更前。"
+                    : "已停止學習新習慣；之前學到的記憶仍然保留，聯想仍然照舊排序。");
+        }
+
         /// <summary>清空聯想字記憶（先確認，因為呢個動作不可逆）。</summary>
         private void ClearAssocMemory()
         {
@@ -420,6 +451,10 @@ namespace QuickIME
             _ctrlSpaceItem.Checked = _hook.Gate.CtrlSpaceBlocked;
 
             _assocItem.Checked = _settings.AssocEnabled;
+            _assocLearnItem.Checked = _settings.AssocLearnEnabled;
+            // 聯想字關掉時，「記錄習慣」無意義 → 變灰（但保留原本的勾選狀態）
+            _assocLearnItem.Enabled = _settings.AssocEnabled;
+            _assocClearItem.Enabled = _settings.AssocEnabled;
             _assocClearItem.Text = _assoc.LearnedPairs > 0
                 ? "清空聯想字記憶…（已學習 " + _assoc.LearnedPairs + " 組）"
                 : "清空聯想字記憶…";
@@ -566,6 +601,11 @@ namespace QuickIME
             sb.AppendLine("    清空之後會返去出廠預設嘅聯想詞表，你再打就會重新學過。");
             sb.AppendLine("    記憶存在 assoc.txt，可以人手刪除（見下面「設定檔」）。");
             sb.AppendLine();
+            sb.AppendLine("  ★ 記錄習慣開關：右鍵圖示 → 聯想字 → 「記錄用字習慣」");
+            sb.AppendLine("    勾選（預設）：會學你嘅用字習慣，常用組合排更前。");
+            sb.AppendLine("    取消勾選：仍然有聯想字，但只用出廠詞表，唔會再學新嘅。");
+            sb.AppendLine("              （之前學到嘅記憶會保留，聯想仍然照舊排序）");
+            sb.AppendLine();
             sb.AppendLine("  唔想用聯想字：右鍵圖示 → 聯想字 → 取消勾選「聯想字」。");
             sb.AppendLine();
             sb.AppendLine("【連打】打滿兩個碼後再打字母，會自動送出第一個字，然後繼續打，");
@@ -681,6 +721,16 @@ namespace QuickIME
         public bool AssocEnabled = true;
 
         /// <summary>
+        /// 記錄用字習慣（把學過的組合排到聯想最前）。預設開。
+        ///
+        /// 與 <see cref="AssocEnabled"/> 刻意分開：
+        ///   * AssocEnabled = false      → 完全唔出聯想窗
+        ///   * AssocLearnEnabled = false → 仍然出聯想窗，但只用出廠詞表，唔會學習
+        /// 兩者都開（預設）= 完整體驗：有建議，亦會越用越貼你。
+        /// </summary>
+        public bool AssocLearnEnabled = true;
+
+        /// <summary>
         /// 設定檔路徑。若 AppData 被鎖（網吧 / 受管制電腦常見）就回傳 null，
         /// 之後一律當「冇設定檔」處理 —— 寧願唔記得設定，都唔可以開唔到程式。
         /// </summary>
@@ -775,6 +825,7 @@ namespace QuickIME
                 else if (k == "ShiftSides") ShiftSides = ParseSides(v);
                 else if (k == "BlockCtrlSpace") BlockCtrlSpace = (v != "0");
                 else if (k == "AssocEnabled") AssocEnabled = (v != "0");
+                else if (k == "AssocLearnEnabled") AssocLearnEnabled = (v != "0");
             }
         }
 
@@ -785,6 +836,7 @@ namespace QuickIME
                    "ShiftSides=" + FormatSides(ShiftSides) + "\r\n" +
                    "BlockCtrlSpace=" + (BlockCtrlSpace ? "1" : "0") + "\r\n" +
                    "AssocEnabled=" + (AssocEnabled ? "1" : "0") + "\r\n" +
+                   "AssocLearnEnabled=" + (AssocLearnEnabled ? "1" : "0") + "\r\n" +
                    "LastVersionSeen=" + LastVersionSeen + "\r\n";
         }
 
@@ -830,8 +882,8 @@ namespace QuickIME
             Save();
             ShellNotify.Show(
                 Program.AppName + " " + Program.Version + " 已啟動",
-                "新增「聯想字」：打完一個字會提示下一個字，仲會記住你打得最多嘅組合。" +
-                "右鍵圖示 → 聯想字 → 可以清空記憶。");
+                "新增「記錄用字習慣」開關：右鍵圖示 → 聯想字 → 可以隨時開／關學習，" +
+                "亦可以清空聯想記憶。");
         }
     }
 

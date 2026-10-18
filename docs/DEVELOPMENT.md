@@ -164,6 +164,28 @@ Directory.CreateDirectory(dir);   // ❌ AppData 被鎖時拋 UnauthorizedAccess
 2. 兩處都不可寫 → 回傳 `null`，之後一律當「沒有設定檔」
 3. **寧願不記得設定，也不能開不起來**
 
+### 6. `build.ps1` 掉了 UTF-8 BOM → CI 建置整份腳本壞掉
+
+`build.ps1` 含大量中文。CI 用 **Windows PowerShell 5.1**，
+它讀沒有 BOM 的 UTF-8 腳本時會當成 **ANSI（Big5）**，
+中文全部變亂碼，連帶把引號結構弄壞：
+
+```
+Unexpected token '¢ç"Ÿå¤±æ•—"' in expression or statement.
+Missing closing '}' in statement block or type definition.
+```
+
+看起來像語法錯誤，實際上是**編碼問題**，非常容易查錯方向。
+
+修法：
+1. 把 `build.ps1` 存成 **UTF-8 with BOM**
+   （`tools/*.ps1` 本來就有 BOM，所以之前一直沒事）
+2. `.github/workflows/build.yml` 加一個守門步驟，缺少 BOM 就直接失敗並說出原因，
+   而不是讓後面丟出一堆看不懂的 parser error
+
+> 專案用 `.gitattributes` 管理換行，但 **git 不會幫你保留或補上 BOM**。
+> 編輯器若設成「UTF-8 無 BOM」就會再踩一次。
+
 ---
 
 ## 字典為什麼用 702 個 bucket
@@ -263,6 +285,33 @@ hi → 凡 么 丟 夙 舟 卵 我 私 的 待 禹 風
 - 英文 / 數字同理
 - 長度 > 1（整串）也不學，避免「一句話當一個字」
 
+### 為什麼「顯示聯想」與「記錄習慣」是兩個開關
+
+v2.2 加入了 `AssocLearnEnabled`，刻意與 `AssocEnabled` 分開，
+因為兩者回答的是不同問題：
+
+| 開關 | 使用者想表達的 |
+|------|----------------|
+| `AssocEnabled = false` | 「我不要這個功能」 |
+| `AssocLearnEnabled = false` | 「我要建議，但不想被記錄」 |
+
+如果只提供一個開關，想要「有建議但不學習」的人只能二選一，
+而這正是最常見的需求（不想留下使用痕跡、或用的是公用電腦）。
+
+實作上由 `KeyboardHook.ShouldLearn` 統一判斷：
+
+```csharp
+public bool ShouldLearn { get { return AssocEnabled && AssocLearnEnabled; } }
+```
+
+所有 `_assoc.Learn(...)` 呼叫都必須先過這一關
+（目前有兩處：`NoteCommitted` 與 `CommitAssoc`）。
+`--selftest` 有測試驗證三種組合。
+
+**關掉學習不清除既有記憶** —— 這是刻意的：
+「暫停學習」和「清空記憶」是不同操作，前者不應該有破壞性。
+使用者想真正清走時，用「清空聯想字記憶」。
+
 ### 清空記憶的實作
 
 `ClearMemory()` 只清 `_learned`，**不動 `_seed`**（出廠詞表）。
@@ -282,7 +331,7 @@ hi → 凡 么 丟 夙 舟 卵 我 私 的 待 禹 風
 ## 測試
 
 ```powershell
-# 115 項自我測試（字典 + 組字 + 翻頁 + 連打 + 切換 + 設定 + 聯想字）
+# 129 項自我測試（字典 + 組字 + 翻頁 + 連打 + 切換 + 設定 + 聯想字 + 學習開關）
 .\dist\QuickIME.exe --selftest
 
 # 候選窗截圖（不需要真人操作，方便檢查 UI 改動）
@@ -304,6 +353,7 @@ hi → 凡 么 丟 夙 舟 卵 我 私 的 待 禹 風
 | Ctrl+空白 | 上升緣判定、連發、開關攔截 |
 | 設定 | ini 讀寫往返、人手改大小寫／舊數字格式／亂值的容錯 |
 | 聯想字 | 中文判定、詞表解析、學習排序、前綴收窄、持久化往返、壞檔容錯、清空記憶、不影響速成次序 |
+| 學習開關 | 預設值、ini 往返、兩個開關互相獨立、舊設定檔相容、關掉後舊記憶保留 |
 
 
 ---

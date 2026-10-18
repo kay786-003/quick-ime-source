@@ -507,8 +507,20 @@ namespace QuickIME
         /// <summary>目前已打的聯想前綴（顯示在視窗標題用）。</summary>
         public string AssocPending { get { return _assocPending; } }
 
-        /// <summary>聯想字設定（由 Program 提供）。</summary>
+        /// <summary>聯想字設定（由 Program 提供）。false = 完全不出聯想窗。</summary>
         public bool AssocEnabled { get; set; }
+
+        /// <summary>
+        /// 是否記錄用字習慣（把學過的組合排到最前）。由 Program 提供。
+        ///
+        /// 與 <see cref="AssocEnabled"/> 分開：
+        ///   * AssocEnabled = false      → 不出聯想窗，也不學
+        ///   * AssocLearnEnabled = false → 仍然出聯想窗，但只用出廠詞表
+        ///
+        /// 關掉之後，已有的記憶仍然會被讀取（聯想仍然按舊記憶排），
+        /// 只是不再新增／累加。這樣用家「暫停學習」唔會失去之前學到的東西。
+        /// </summary>
+        public bool AssocLearnEnabled { get; set; }
 
         /// <summary>聯想前綴上限（打太多字就自動放棄，避免無限長）。</summary>
         private const int MaxAssocPending = 3;
@@ -534,6 +546,12 @@ namespace QuickIME
         }
 
         /// <summary>
+        /// 現在是否應該記錄習慣：聯想字要開著，而且「記錄習慣」開關亦要開。
+        /// 兩者任何一個關掉都唔會學習。（測試會直接驗證這個判斷。）
+        /// </summary>
+        public bool ShouldLearn { get { return AssocEnabled && AssocLearnEnabled; } }
+
+        /// <summary>
         /// 由上屏文字更新聯想狀態（掛鉤內部用）。
         /// 只有「純中文字」才學，標點 / 英文 / 數字一律當成「重新開始」。
         /// </summary>
@@ -542,7 +560,7 @@ namespace QuickIME
             if (string.IsNullOrEmpty(text)) { EndAssoc(); return; }
 
             string prev = ContextPrev;
-            if (AssocEnabled && _assoc != null && prev != null && prev.Length == 1
+            if (ShouldLearn && _assoc != null && prev != null && prev.Length == 1
                 && text.Length == 1 && Assoc.IsHanChar(text[0]) && Assoc.IsHanChar(prev[0]))
             {
                 _assoc.Learn(prev, text);
@@ -642,7 +660,7 @@ namespace QuickIME
             if (string.IsNullOrEmpty(ch)) { EndAssoc(); return; }
 
             string prev = ContextPrev;
-            if (AssocEnabled && _assoc != null && !string.IsNullOrEmpty(prev))
+            if (ShouldLearn && _assoc != null && !string.IsNullOrEmpty(prev))
             {
                 _assoc.Learn(prev, ch);
                 ScheduleSave();
@@ -677,6 +695,7 @@ namespace QuickIME
             _assoc = assoc;
             _saveAction = saveAction;
             AssocEnabled = assoc != null;
+            AssocLearnEnabled = assoc != null;
             ContextPrev = "";
             _assocItems = new List<string>();
             _assocActive = false;

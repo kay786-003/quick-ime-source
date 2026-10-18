@@ -5,7 +5,7 @@
 不需要安裝任何輸入法框架，雙擊即用。
 
 ```
-QuickIME.exe  (124 KB，字典 + 聯想詞表已內嵌)
+QuickIME.exe  (127 KB，字典 + 聯想詞表已內嵌)
 ```
 
 ---
@@ -14,8 +14,8 @@ QuickIME.exe  (124 KB，字典 + 聯想詞表已內嵌)
 
 | 下載 | 檔案 | 說明 |
 |------|------|------|
-| **[QuickIME.exe](https://github.com/kay786-003/quick-ime-source/releases/download/v2.1/QuickIME.exe)** | 單一執行檔，雙擊即用（字典 + 聯想詞表已內嵌） |
-| **[QuickIME-v2.1.zip](https://github.com/kay786-003/quick-ime-source/releases/download/v2.1/QuickIME-v2.1.zip)** | exe + 字典 + 使用說明 + 示意圖 |
+| **[QuickIME.exe](https://github.com/kay786-003/quick-ime-source/releases/download/v2.2/QuickIME.exe)** | 單一執行檔，雙擊即用（字典 + 聯想詞表已內嵌） |
+| **[QuickIME-v2.2.zip](https://github.com/kay786-003/quick-ime-source/releases/download/v2.2/QuickIME-v2.2.zip)** | exe + 字典 + 使用說明 + 示意圖 |
 
 > 也可以到 **[Releases](https://github.com/kay786-003/quick-ime-source/releases)** 頁面查看所有正式版本。
 
@@ -26,7 +26,7 @@ QuickIME.exe  (124 KB，字典 + 聯想詞表已內嵌)
 1. **用 Releases 頁面** —— `github.com` 的 release 下載通常比 raw 穩定
 2. **用鏡像加速**，例如在連結前加上 `https://ghproxy.net/`：
    ```
-   https://ghproxy.net/https://github.com/kay786-003/quick-ime-source/releases/download/v2.1/QuickIME.exe
+   https://ghproxy.net/https://github.com/kay786-003/quick-ime-source/releases/download/v2.2/QuickIME.exe
    ```
 3. **先下載到 USB 手指**，之後去網吧直接插手指用，不必每次重下載
 
@@ -52,7 +52,7 @@ QuickIME.exe  (124 KB，字典 + 聯想詞表已內嵌)
 ```powershell
 Get-FileHash .\QuickIME.exe -Algorithm SHA256
 .\QuickIME.exe --version      # 應顯示 2.0
-.\QuickIME.exe --selftest     # 應顯示全部 115 項通過
+.\QuickIME.exe --selftest     # 應顯示全部 129 項通過
 ```
 
 > `--selftest` 會驗證字典完整性與組字流程，這比比對雜湊更能證明檔案沒問題。
@@ -124,7 +124,7 @@ Get-FileHash .\QuickIME.exe -Algorithm SHA256
 
 ---
 
-## 🆕 v2.1 更新重點：聯想字（會學習你）
+## v2.1 更新重點：聯想字（會學習你）
 
 打完一個中文字，自動列出「最可能接住落去」的字，按數字鍵直接選：
 
@@ -145,6 +145,22 @@ Windows 的聯想字是固定的。本專案的聯想字會**記錄你的用字�
 | 你未用過的組合 | 保留出廠預設次序 |
 
 排序規則：**學過的排前（次數越多越前），未學過的保留出廠次序。**
+
+### 🆕 v2.2：記錄習慣可以隨時開關
+
+聯想字和「記錄習慣」是**兩個獨立開關**：
+
+| 聯想字 | 記錄用字習慣 | 效果 |
+|--------|-------------|------|
+| ✅ 開 | ✅ 開（預設） | 有聯想，而且越用越貼你的習慣 |
+| ✅ 開 | ❌ 關 | **仍然有聯想，但只用出廠詞表**，不會再學新東西 |
+| ❌ 關 | — | 完全不出聯想窗 |
+
+右鍵系統匣 → **聯想字** → 勾選／取消 **「記錄用字習慣（常用的組合排更前）」**。
+
+> 關掉學習**不會刪除**已學到的記憶 —— 之前學的仍然照舊排序，只是不再新增。
+> 想真正清走就用「清空聯想字記憶」。
+> 聯想字關掉時，「記錄習慣」和「清空」會變灰（因為已經沒有意義）。
 
 ### 聯想窗操作
 
@@ -337,7 +353,7 @@ dist\qdict.bin       # 字典（可選，方便自行替換）
 │   ├── Keyboard.cs           # Win32 低階鍵盤掛鉤 + SendInput
 │   ├── CandidateForm.cs      # 候選字 / 聯想字視窗（WS_EX_NOACTIVATE）
 │   ├── Program.cs            # 主程式 / 系統匣 / 設定 / 說明
-│   ├── SelfTest.cs           # 115 項自我測試
+│   ├── SelfTest.cs           # 129 項自我測試
 │   ├── GameTest.cs           # 打機情境測試（長按 Shift 不誤切換）
 │   ├── IconShot.cs           # 系統匣圖示截圖
 │   └── UiShot.cs             # 候選窗 / 聯想窗截圖（離線檢查 UI）
@@ -358,7 +374,7 @@ dist\qdict.bin       # 字典（可選，方便自行替換）
 ### 執行測試
 
 ```powershell
-.\dist\QuickIME.exe --selftest          # 115 項自我測試
+.\dist\QuickIME.exe --selftest          # 129 項自我測試
 .\dist\QuickIME.exe --gametest          # 打機情境測試（長按 Shift + WASD 不誤切換）
 .\dist\QuickIME.exe --uishop shot.png   # 產生候選窗截圖
 .\dist\QuickIME.exe --iconshot .\icons  # 產生三種狀態的系統匣圖示

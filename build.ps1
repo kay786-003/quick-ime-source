@@ -89,7 +89,7 @@ if (-not $SkipRelease) {
     Copy-Item $outExe -Destination (Join-Path $relDir 'QuickIME.exe') -Force
 
     # 打包成 zip（exe + 說明書 + 示意圖）
-    $zipName = '速成輸入法_v2.1.zip'
+    $zipName = '速成輸入法_v2.2.zip'
     $zipPath = Join-Path $relDir $zipName
     Remove-Item $zipPath -ErrorAction SilentlyContinue
     $tmp = Join-Path $env:TEMP ('qime-pack-' + [guid]::NewGuid().ToString('N').Substring(0,8))
