@@ -14,10 +14,10 @@ QuickIME.exe  (82 KB，字典已內嵌)
 
 | 下載 | 檔案 | 說明 |
 |------|------|------|
-| **[QuickIME.exe](https://github.com/kay786-003/quick-ime-source/raw/main/releases/QuickIME.exe)** | 82 KB | 單一執行檔，雙擊即用（字典已內嵌） |
-| **[QuickIME-v1.0.zip](https://github.com/kay786-003/quick-ime-source/raw/main/releases/QuickIME-v1.0.zip)** | 65 KB | exe + 使用說明 + 示意圖 |
+| **[QuickIME.exe](https://github.com/kay786-003/quick-ime-source/releases/download/v1.0/QuickIME.exe)** | 82 KB | 單一執行檔，雙擊即用（字典已內嵌） |
+| **[QuickIME-v1.0.zip](https://github.com/kay786-003/quick-ime-source/releases/download/v1.0/QuickIME-v1.0.zip)** | 106 KB | exe + 字典 + 使用說明 + 示意圖 |
 
-> 也可以到 **[Releases](../../releases)** 頁面下載，那裡有標記版本號的正式版本。
+> 也可以到 **[Releases](https://github.com/kay786-003/quick-ime-source/releases)** 頁面查看所有正式版本。
 
 ### 網吧環境下載建議
 
@@ -26,7 +26,7 @@ QuickIME.exe  (82 KB，字典已內嵌)
 1. **用 Releases 頁面** —— `github.com` 的 release 下載通常比 raw 穩定
 2. **用鏡像加速**，例如在連結前加上 `https://ghproxy.net/`：
    ```
-   https://ghproxy.net/https://github.com/kay786-003/quick-ime-source/raw/main/releases/QuickIME.exe
+   https://ghproxy.net/https://github.com/kay786-003/quick-ime-source/releases/download/v1.0/QuickIME.exe
    ```
 3. **先下載到 USB 手指**，之後去網吧直接插手指用，不必每次重下載
 
@@ -44,7 +44,7 @@ QuickIME.exe  (82 KB，字典已內嵌)
 ### 檔案校驗
 
 ```
-SHA256 (QuickIME.exe) = EFBEAFB0CB517F8D73F1B6C3E12247594D2C528CB01A2139DE2ABFA53DCA581E
+SHA256 (QuickIME.exe) = 325E489D388EBD57B0643ADA12FABA6766C5DA2BBDDE4C82F874CA50A302FFF8
 ```
 
 若你下載後想確認檔案未被篡改，可在 PowerShell 執行：

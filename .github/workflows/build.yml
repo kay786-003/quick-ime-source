@@ -64,7 +64,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $tag = "${{ github.ref_name }}"
-          $zip = "速成輸入法_$tag.zip"
+          $zip = "QuickIME-$tag.zip"
 
           # 準備上傳檔案
           $stage = "release-stage"
@@ -82,7 +82,7 @@ jobs:
             "$zip" `
             "QuickIME.exe" `
             --title "速成輸入法 $tag" `
-            --notes "免安裝速成輸入法。下載 ``速成輸入法_$tag.zip`` 解壓即用，或直接下載 ``QuickIME.exe``（字典已內嵌）。"
+            --notes "免安裝速成輸入法。下載 ``QuickIME-$tag.zip`` 解壓即用，或直接下載 ``QuickIME.exe``（字典已內嵌）。"
 
       # 非 tag 推送時，把現成 exe 提交回 releases/，方便直接下載
       - name: Commit prebuilt binary to releases/
@@ -94,19 +94,11 @@ jobs:
 
           Copy-Item .\dist\QuickIME.exe .\releases\QuickIME.exe -Force
 
-          $checksum = (Get-FileHash .\releases\QuickIME.exe -Algorithm SHA256).Hash
-          $readmePath = Join-Path $PWD 'README.md'
-          $readme = [System.IO.File]::ReadAllText($readmePath, [System.Text.Encoding]::UTF8)
-          $pattern = 'SHA256 \(QuickIME\.exe\) = [A-Fa-f0-9]{64}'
-          if ($readme -notmatch $pattern) { throw 'README.md QuickIME.exe checksum line not found' }
-          $readme = [regex]::Replace($readme, $pattern, "SHA256 (QuickIME.exe) = $checksum")
-          [System.IO.File]::WriteAllText($readmePath, $readme, [System.Text.UTF8Encoding]::new($false))
-
-          git add releases/QuickIME.exe README.md
+          git add releases/QuickIME.exe
           git diff --cached --quiet
           if ($LASTEXITCODE -eq 0) {
             Write-Host "releases/QuickIME.exe 無變化，略過 commit"
           } else {
-            git commit -m "chore: update prebuilt QuickIME.exe [skip ci]"
+            git commit -m "chore: update prebuilt QuickIME.exe"
             git push
           }
