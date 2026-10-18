@@ -26,6 +26,19 @@ jobs:
           $csc = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
           Write-Host "csc exists: $(Test-Path $csc)"
 
+      # build.ps1 含中文，若缺少 UTF-8 BOM，Windows PowerShell 5.1 會用 ANSI
+      # 解析而整個腳本壞掉（Unexpected token）。這個檢查防止再次發生。
+      - name: Verify build.ps1 has UTF-8 BOM
+        shell: pwsh
+        run: |
+          $p = 'build.ps1'
+          $b = [System.IO.File]::ReadAllBytes($p)
+          $hasBom = ($b.Length -ge 3 -and $b[0] -eq 0xEF -and $b[1] -eq 0xBB -and $b[2] -eq 0xBF)
+          if (-not $hasBom) {
+            throw "$p is missing a UTF-8 BOM: PowerShell 5.1 will parse its Chinese text as ANSI and fail."
+          }
+          Write-Host "OK: $p starts with a UTF-8 BOM"
+
       - name: Build
         shell: pwsh
         run: |
