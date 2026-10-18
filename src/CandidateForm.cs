@@ -4,6 +4,7 @@
 //    * WS_EX_NOACTIVATE + ShowWithoutActivation：永不被搶焦點
 //    * 事件驅動重繪（唔用 timer 輪詢，減低 CPU）
 //    * 跟隨文字插入點（用 GetGUIThreadInfo 取得真實 caret 位置）
+//    * 同一個視窗兼任「聯想字」顯示（打完字之後列出下一個字）
 // ============================================================================
 using System;
 using System.Collections.Generic;
@@ -14,6 +15,15 @@ using System.Windows.Forms;
 
 namespace QuickIME
 {
+    /// <summary>視窗目前正在顯示什麼。</summary>
+    internal enum CandidateMode
+    {
+        /// <summary>速成組字中的候選字。</summary>
+        Compose = 0,
+        /// <summary>上一個字之後的聯想字。</summary>
+        Associate
+    }
+
     internal sealed class CandidateForm : Form
     {
         private static readonly Color BgColor = Color.FromArgb(252, 252, 252);
@@ -30,10 +40,19 @@ namespace QuickIME
         private const int PadX = 7;
         private const int PadY = 3;
 
+        /// <summary>聯想字最多顯示幾個（與 Assoc.MaxPerChar 無關，純粹係畫面闊度）。</summary>
+        public const int AssocPerPage = 9;
+
         private Composer _composer;
         private readonly Font _fontChar;
         private readonly Font _fontSmall;
         private readonly StringFormat _centered;
+
+        // ---- 聯想字狀態（由 KeyboardHook 餵入）----
+        private CandidateMode _mode = CandidateMode.Compose;
+        private string _assocPrev;                 // 上一個上屏的字
+        private string _assocPending = "";         // 已打的聯想前綴（用括號顯示）
+        private IList<string> _assocItems = new List<string>();
 
         public CandidateForm()
         {
@@ -76,6 +95,9 @@ namespace QuickIME
             }
         }
 
+        /// <summary>目前顯示模式（給測試 / 日誌用）。</summary>
+        public CandidateMode Mode { get { return _mode; } }
+
         public void Attach(Composer composer)
         {
             _composer = composer;
@@ -84,12 +106,63 @@ namespace QuickIME
 
         private void OnComposerChanged(object sender, EventArgs e)
         {
+            // 組字一起，就即刻切返去候選字模式（聯想字自動讓位）
+            if (_composer != null && _composer.IsComposing) ClearAssoc();
             Render();
         }
 
+        // ------------------------------------------------------------------
+        //  聯想字 API（由 KeyboardHook 使用）
+        // ------------------------------------------------------------------
+        /// <summary>顯示聯想字。<paramref name="prev"/> = 上一個上屏的字。</summary>
+        public void ShowAssoc(string prev, string pending, IList<string> items)
+        {
+            _mode = CandidateMode.Associate;
+            _assocPrev = prev;
+            _assocPending = pending ?? "";
+            _assocItems = items ?? new List<string>();
+            Render();
+        }
+
+        /// <summary>
+        /// 只按目前內容重畫，不重新定位 / 不改尺寸。
+        /// 給離線截圖用（--uishop 自己控制視窗大小）。
+        /// </summary>
+        public void RepaintOnly()
+        {
+            Invalidate();
+        }
+
+        /// <summary>隱藏聯想字（例如按過 Esc、或者已選字）。</summary>
+        public void ClearAssoc()
+        {
+            _mode = CandidateMode.Compose;
+            _assocPrev = null;
+            _assocPending = "";
+            _assocItems = new List<string>();
+        }
+
+        /// <summary>目前顯示中的聯想字（回傳副本，測試用）。</summary>
+        public IList<string> AssocItems { get { return new List<string>(_assocItems); } }
+
+        /// <summary>點選聯想字時回報（由 KeyboardHook 掛上）。</summary>
+        public event EventHandler AssocCommitted;
+
+        /// <summary>隱藏視窗（暫停輸入法 / 逾時時用）。</summary>
+        public void HideNow()
+        {
+            ClearAssoc();
+            if (Visible) Hide();
+        }
         /// <summary>依組字狀態重畫並重新定位。</summary>
         public void Render()
         {
+            if (_mode == CandidateMode.Associate)
+            {
+                RenderAssoc();
+                return;
+            }
+
             if (_composer == null || !_composer.IsComposing)
             {
                 if (Visible) Hide();
@@ -115,15 +188,35 @@ namespace QuickIME
 
             int x, y;
             GetCaretPoint(out x, out y);
+            PlaceAt(x, y, w, h);
+            if (!Visible) Show();
+            Invalidate();
+        }
+
+        private void RenderAssoc()
+        {
+            int count = Math.Min(_assocItems.Count, AssocPerPage);
+            if (count == 0) { if (Visible) Hide(); return; }
+
+            int w = PadX * 2 + CellW * count;
+            int h = PadY * 2 + CodeH + CellH + FootH;
+
+            int x, y;
+            GetCaretPoint(out x, out y);
+            PlaceAt(x, y, w, h);
+            if (!Visible) Show();
+            Invalidate();
+        }
+
+        /// <summary>依插入點定位，並確保不會超出螢幕。</summary>
+        private void PlaceAt(int x, int y, int w, int h)
+        {
             Rectangle scr = Screen.FromPoint(new Point(x, y)).WorkingArea;
             if (x + w > scr.Right) x = scr.Right - w;
             if (y + h > scr.Bottom) y = y - h - 8;
             if (x < scr.Left) x = scr.Left;
             if (y < scr.Top) y = scr.Top;
-
             Bounds = new Rectangle(x, y, w, h);
-            if (!Visible) Show();
-            Invalidate();
         }
 
         // ------------------------------------------------------------------
@@ -205,13 +298,17 @@ namespace QuickIME
         // ------------------------------------------------------------------
         protected override void OnPaint(PaintEventArgs e)
         {
+            if (_mode == CandidateMode.Associate) { PaintAssoc(e); return; }
+            PaintCompose(e);
+        }
+
+        private void PaintCompose(PaintEventArgs e)
+        {
             Graphics g = e.Graphics;
             g.SmoothingMode = SmoothingMode.Default;
             g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
 
-            var rect = new Rectangle(0, 0, Width - 1, Height - 1);
-            using (var bg = new SolidBrush(BgColor)) g.FillRectangle(bg, rect);
-            using (var pen = new Pen(BorderColor)) g.DrawRectangle(pen, rect);
+            DrawFrame(g);
 
             if (_composer == null) return;
 
@@ -268,6 +365,64 @@ namespace QuickIME
             }
             using (var b = new SolidBrush(DimColor))
                 g.DrawString(foot, _fontSmall, b, PadX + 1, Height - FootH - 1);
+        }
+
+        /// <summary>聯想字畫面：標題顯示上一個字，下面一排可以按數字選。</summary>
+        private void PaintAssoc(PaintEventArgs e)
+        {
+            Graphics g = e.Graphics;
+            g.SmoothingMode = SmoothingMode.Default;
+            g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+
+            DrawFrame(g);
+
+            int count = Math.Min(_assocItems.Count, AssocPerPage);
+            if (count == 0) return;
+
+            // 標題：「聯想　你（好）」
+            string title = "聯想　" + (_assocPrev ?? "");
+            if (!string.IsNullOrEmpty(_assocPending))
+                title += "（" + _assocPending + "）";
+            using (var b = new SolidBrush(CodeColor))
+                g.DrawString(title, _fontSmall, b, PadX + 1, PadY + 3);
+
+            for (int i = 0; i < count; i++)
+            {
+                int cx = PadX + i * CellW;
+                int cy = PadY + CodeH;
+                bool sel = (i == 0);
+
+                if (sel)
+                {
+                    using (var b = new SolidBrush(SelBack)) g.FillRectangle(b, cx, cy, CellW, CellH);
+                }
+
+                using (var b = new SolidBrush(sel ? Color.FromArgb(225, 235, 245) : DimColor))
+                    g.DrawString((i + 1).ToString(), _fontSmall, b, cx + 3, cy + 1);
+
+                using (var b = new SolidBrush(sel ? Color.White : TextColor))
+                    g.DrawString(_assocItems[i], _fontChar, b,
+                        new RectangleF(cx, cy, CellW, CellH), _centered);
+            }
+
+            // 底部：提示
+            string foot = "1-" + count + " 選字　空格 = 取消　Esc = 取消";
+            using (var b = new SolidBrush(DimColor))
+                g.DrawString(foot, _fontSmall, b, PadX + 1, Height - FootH - 1);
+        }
+
+        private void DrawFrame(Graphics g)
+        {
+            var rect = new Rectangle(0, 0, Width - 1, Height - 1);
+            using (var bg = new SolidBrush(BgColor)) g.FillRectangle(bg, rect);
+            using (var pen = new Pen(BorderColor)) g.DrawRectangle(pen, rect);
+        }
+
+        /// <summary>聯想字被選中（由 KeyboardHook 呼叫，然後由 Program 送出文字）。</summary>
+        internal void RaiseAssocCommitted()
+        {
+            var h = AssocCommitted;
+            if (h != null) h(this, EventArgs.Empty);
         }
 
         protected override void Dispose(bool disposing)

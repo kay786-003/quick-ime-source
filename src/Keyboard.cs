@@ -261,6 +261,7 @@ namespace QuickIME
 
         public void Dispose()
         {
+            DisposeAssoc();
             Uninstall();
             GC.SuppressFinalize(this);
         }
@@ -468,6 +469,15 @@ namespace QuickIME
                 }
             }
 
+            // ---- 聯想字模式（上一個字之後嘅建議）----
+            if (_assocActive)
+            {
+                if (HandleAssocKey(vk))
+                    return (IntPtr)1;
+                // 落到這裡代表呢個鍵唔關聯想字事 → 收起聯想窗，繼續正常處理
+                EndAssoc();
+            }
+
             // ---- 中文模式 ----
             if (!ChineseMode)
                 return Native.CallNextHookEx(_hook, nCode, wParam, lParam);
@@ -482,6 +492,222 @@ namespace QuickIME
             return Native.CallNextHookEx(_hook, nCode, wParam, lParam);
         }
 
+        // ------------------------------------------------------------------
+        //  聯想字
+        // ------------------------------------------------------------------
+        /// <summary>
+        /// 上一個上屏的字。空字串 = 未有（開頭 / 換行之後）。
+        /// 只在中文模式、而且真係上屏了中文字才會更新。
+        /// </summary>
+        public string ContextPrev { get; private set; }
+
+        /// <summary>聯想字是否顯示中。</summary>
+        public bool AssocActive { get { return _assocActive; } }
+
+        /// <summary>目前已打的聯想前綴（顯示在視窗標題用）。</summary>
+        public string AssocPending { get { return _assocPending; } }
+
+        /// <summary>聯想字設定（由 Program 提供）。</summary>
+        public bool AssocEnabled { get; set; }
+
+        /// <summary>聯想前綴上限（打太多字就自動放棄，避免無限長）。</summary>
+        private const int MaxAssocPending = 3;
+
+        /// <summary>目前顯示中的聯想字（由 UI 回報，掛鉤唔直接持有 Form）。</summary>
+        public IList<string> AssocItems
+        {
+            get { return _assocItems; }
+            set { _assocItems = value ?? new List<string>(); }
+        }
+
+        /// <summary>聯想字有變更（UI 要重畫）。</summary>
+        public event EventHandler AssocChanged;
+
+        private bool _assocActive;
+        private string _assocPending = "";
+        private IList<string> _assocItems = new List<string>();
+
+        private void RaiseAssocChanged()
+        {
+            var h = AssocChanged;
+            if (h != null) h(this, EventArgs.Empty);
+        }
+
+        /// <summary>
+        /// 由上屏文字更新聯想狀態（掛鉤內部用）。
+        /// 只有「純中文字」才學，標點 / 英文 / 數字一律當成「重新開始」。
+        /// </summary>
+        private void NoteCommitted(string text)
+        {
+            if (string.IsNullOrEmpty(text)) { EndAssoc(); return; }
+
+            string prev = ContextPrev;
+            if (AssocEnabled && _assoc != null && prev != null && prev.Length == 1
+                && text.Length == 1 && Assoc.IsHanChar(text[0]) && Assoc.IsHanChar(prev[0]))
+            {
+                _assoc.Learn(prev, text);
+                ScheduleSave();
+            }
+
+            if (AssocEnabled && Assoc.IsHanChar(text[text.Length - 1]))
+            {
+                ContextPrev = text.Substring(text.Length - 1);
+                ShowAssocFor();
+            }
+            else
+            {
+                ContextPrev = "";
+                EndAssoc();
+            }
+        }
+
+        private void ShowAssocFor()
+        {
+            if (!AssocEnabled || _assoc == null) { EndAssoc(); return; }
+            string prev = ContextPrev;
+            if (string.IsNullOrEmpty(prev)) { EndAssoc(); return; }
+
+            _assocPending = "";
+            _assocItems = _assoc.Lookup(prev, "");
+            _assocActive = _assocItems.Count > 0;
+            RaiseAssocChanged();
+        }
+
+        private void EndAssoc()
+        {
+            bool was = _assocActive;
+            _assocActive = false;
+            _assocPending = "";
+            _assocItems = new List<string>();
+            if (was) RaiseAssocChanged();
+        }
+
+        /// <summary>暫停 / 切模式時清掉聯想狀態（唔清 ContextPrev 之外嘅嘢）。</summary>
+        public void ResetAssoc()
+        {
+            ContextPrev = "";
+            EndAssoc();
+        }
+
+        /// <summary>
+        /// 處理聯想字模式中的按鍵。回傳 true = 已消耗（唔交回系統）。
+        /// 唔關事嘅鍵回傳 false，由呼叫者收起聯想窗並繼續正常流程。
+        /// </summary>
+        private bool HandleAssocKey(uint vk)
+        {
+            // 數字 1-9 選聯想字
+            int di = DigitIndex(vk);
+            if (di >= 0 && di < _assocItems.Count)
+            {
+                CommitAssoc(_assocItems[di]);
+                return true;
+            }
+
+            // 空格 / Esc：收起聯想窗（唔上屏任何東西）
+            if (vk == Native.VK_SPACE || vk == Native.VK_ESCAPE)
+            {
+                EndAssoc();
+                RaiseAssocChanged();
+                return true;
+            }
+
+            // 字母：當成「繼續打聯想字」的前綴（像拼音輸入法一樣越打越窄）
+            char lower = ToLowerLetter(vk);
+            if (lower != '\0' && AssocEnabled && _assoc != null)
+            {
+                string next = _assocPending + lower;
+                if (next.Length > MaxAssocPending) { EndAssoc(); RaiseAssocChanged(); return false; }
+
+                var items = _assoc.Lookup(ContextPrev, next);
+                if (items.Count > 0)
+                {
+                    _assocPending = next;
+                    _assocItems = items;
+                    RaiseAssocChanged();
+                    return true;
+                }
+
+                // 冇字接得上 → 當普通速成碼處理（收起聯想窗）
+                EndAssoc();
+                RaiseAssocChanged();
+                return false;
+            }
+
+            return false;
+        }
+
+        /// <summary>選了一個聯想字：學起來、送出、再把新字當成新的上下文。</summary>
+        private void CommitAssoc(string ch)
+        {
+            if (string.IsNullOrEmpty(ch)) { EndAssoc(); return; }
+
+            string prev = ContextPrev;
+            if (AssocEnabled && _assoc != null && !string.IsNullOrEmpty(prev))
+            {
+                _assoc.Learn(prev, ch);
+                ScheduleSave();
+            }
+
+            EndAssoc();
+            RaiseAssocChanged();
+            Typist.SendText(ch);
+            ContextPrev = ch;
+            ShowAssocFor();
+        }
+
+        /// <summary>記憶寫檔（延遲寫，避免每打一個字就寫一次硬碟）。</summary>
+        private void ScheduleSave()
+        {
+            _dirty = true;
+            if (_saveTimer == null) return;
+            _saveTimer.Stop();
+            _saveTimer.Start();
+        }
+
+        private System.Windows.Forms.Timer _saveTimer;
+        private bool _dirty;
+        private Action<string> _saveAction;
+
+        /// <summary>
+        /// 由 Program 注入「儲存記憶」的動作。
+        /// 掛鉤本身唔應該知道檔案路徑（保持可測試）。
+        /// </summary>
+        public void InitAssoc(Assoc assoc, Action<string> saveAction)
+        {
+            _assoc = assoc;
+            _saveAction = saveAction;
+            AssocEnabled = assoc != null;
+            ContextPrev = "";
+            _assocItems = new List<string>();
+            _assocActive = false;
+            _assocPending = "";
+
+            _saveTimer = new System.Windows.Forms.Timer();
+            _saveTimer.Interval = 4000;
+            _saveTimer.Tick += (s, e) =>
+            {
+                _saveTimer.Stop();
+                FlushAssocSave();
+            };
+        }
+
+        /// <summary>立刻把未寫入的學習記憶寫檔（結束程式 / 清空前用）。</summary>
+        public void FlushAssocSave()
+        {
+            if (!_dirty || _saveAction == null) return;
+            _dirty = false;
+            try { _saveAction(null); } catch { }
+        }
+
+        public void DisposeAssoc()
+        {
+            FlushAssocSave();
+            if (_saveTimer != null) { _saveTimer.Dispose(); _saveTimer = null; }
+        }
+
+        private Assoc _assoc;
+
+
         /// <summary>把 Composer 產生的文字實際送出去。</summary>
         public void Flush()
         {
@@ -489,6 +715,7 @@ namespace QuickIME
             if (text == null) return;
             _composer.ClearPending();
             Typist.SendText(text);
+            NoteCommitted(text);
         }
 
         public void RaiseModeChanged()

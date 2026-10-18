@@ -1,4 +1,4 @@
-﻿# ============================================================================
+# ============================================================================
 #  build.ps1 - 一鍵建置速成輸入法
 #  需要：Windows + .NET Framework 4.x（Windows 10/11 內建）
 #  用法：powershell -ExecutionPolicy Bypass -File .\build.ps1
@@ -52,6 +52,8 @@ Write-Host "[2/3] 編譯 QuickIME.exe..." -ForegroundColor Cyan
 $sources = Get-ChildItem $src -Filter *.cs | ForEach-Object { $_.FullName }
 $outExe  = Join-Path $bin 'QuickIME.exe'
 
+$assocSeed = Join-Path $src 'assoc-seed.txt'
+
 $args = @(
     '/nologo'
     '/target:winexe'
@@ -65,7 +67,15 @@ $args = @(
     "/resource:$dictPath,qdict.bin"
 ) + $sources
 
+# 聯想字出廠詞表（存在才嵌入，唔存在就用通用常用字補底）
+if (Test-Path $assocSeed) {
+    $args += "/resource:$assocSeed,assoc-seed.txt"
+} else {
+    Write-Host "      找不到 src\assoc-seed.txt，聯想字會用通用常用字" -ForegroundColor Yellow
+}
+
 & $csc @args
+
 if ($LASTEXITCODE -ne 0) { throw "編譯失敗" }
 
 Copy-Item $outExe -Destination (Join-Path $dist 'QuickIME.exe') -Force
@@ -79,7 +89,7 @@ if (-not $SkipRelease) {
     Copy-Item $outExe -Destination (Join-Path $relDir 'QuickIME.exe') -Force
 
     # 打包成 zip（exe + 說明書 + 示意圖）
-    $zipName = '速成輸入法_v2.0.zip'
+    $zipName = '速成輸入法_v2.1.zip'
     $zipPath = Join-Path $relDir $zipName
     Remove-Item $zipPath -ErrorAction SilentlyContinue
     $tmp = Join-Path $env:TEMP ('qime-pack-' + [guid]::NewGuid().ToString('N').Substring(0,8))

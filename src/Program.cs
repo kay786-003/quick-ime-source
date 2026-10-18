@@ -18,7 +18,7 @@ namespace QuickIME
     internal static class Program
     {
         internal const string AppName = "速成輸入法";
-        internal const string Version = "2.0";
+        internal const string Version = "2.1";
 
         internal static readonly string LogPath = ResolveLogPath();
 
@@ -96,6 +96,7 @@ namespace QuickIME
                     Console.WriteLine("  --selftest [字典檔] 執行自我測試");
                     Console.WriteLine("  --gametest         打機情境測試（長按 Shift 不誤切換）");
                     Console.WriteLine("  --iconshot [資料夾] 產生三種狀態的系統匣圖示");
+                    Console.WriteLine("  --uishop [檔案]    產生候選窗 / 聯想窗截圖");
                     Console.WriteLine("  --diag             啟動並寫出診斷日誌");
                     Console.WriteLine("  --version          顯示版本");
                     return 0;
@@ -187,7 +188,13 @@ namespace QuickIME
         private readonly ToolStripMenuItem _shiftLeftItem;
         private readonly ToolStripMenuItem _shiftRightItem;
         private readonly ToolStripMenuItem _ctrlSpaceItem;
+        private readonly ToolStripMenuItem _assocItem;
+        private readonly ToolStripMenuItem _assocClearItem;
         private readonly Settings _settings;
+
+        // ---- 聯想字 ----
+        private readonly Assoc _assoc;
+        private readonly System.Windows.Forms.Timer _assocHideTimer;
 
         public ImeApplication()
         {
@@ -215,12 +222,34 @@ namespace QuickIME
             _cand.Attach(_composer);
             Program.Log("ctor: candidate form created");
 
+            // ---- 聯想字：載入出廠詞表 + 個人記憶 ----
+            _assoc = new Assoc();
+            _assoc.LoadSeedFromAssembly(Assembly.GetExecutingAssembly());
+            _assoc.LoadMemory(Settings.AssocFilePath);
+            _hook.InitAssoc(_assoc, delegate { SaveAssoc(); });
+            _hook.AssocEnabled = _settings.AssocEnabled;
+            Program.Log("ctor: assoc loaded, pairs=" + _assoc.LearnedPairs);
+
+            // 聯想窗跟隨掛鉤狀態重畫
+            _hook.AssocChanged += (s, e) =>
+            {
+                if (!_hook.AssocActive) { _cand.HideNow(); return; }
+                _cand.ShowAssoc(_hook.ContextPrev, _hook.AssocPending, _hook.AssocItems);
+                RestartAssocHideTimer();
+            };
+
+            // 聯想窗久唔用就自動收埋，唔好阻住畫面
+            _assocHideTimer = new System.Windows.Forms.Timer();
+            _assocHideTimer.Interval = AssocHideMs;
+            _assocHideTimer.Tick += (s, e) => { _assocHideTimer.Stop(); _hook.ResetAssoc(); _cand.HideNow(); };
+
             _modeItem = new ToolStripMenuItem("中文模式（速成）", null, (s, e) => ToggleMode());
 
-            // ---- 設定：中英切換鍵 / Ctrl+空白 ----
+            // ---- 設定：中英切換鍵 / Ctrl+空白 / 聯想字 ----
             _shiftLeftItem = MakeCheck("左邊 Shift 單按切換中／英", false, (s, e) => ToggleShiftSide(ShiftToggleSides.Left));
             _shiftRightItem = MakeCheck("右邊 Shift 單按切換中／英", false, (s, e) => ToggleShiftSide(ShiftToggleSides.Right));
             _ctrlSpaceItem = MakeCheck("攔住 Ctrl+空白（唔會轉全形符號）", false, (s, e) => ToggleCtrlSpace());
+            _assocItem = MakeCheck("聯想字（打完字自動提示下一個字）", false, (s, e) => ToggleAssoc());
 
             var settingsMenu = new ToolStripMenuItem("設定");
             settingsMenu.DropDownItems.Add(new ToolStripMenuItem("中英切換鍵（單按 Shift）") { Enabled = false });
@@ -229,12 +258,23 @@ namespace QuickIME
             settingsMenu.DropDownItems.Add(new ToolStripSeparator());
             settingsMenu.DropDownItems.Add(_ctrlSpaceItem);
             settingsMenu.DropDownItems.Add(new ToolStripSeparator());
+            settingsMenu.DropDownItems.Add(_assocItem);
+            settingsMenu.DropDownItems.Add(new ToolStripSeparator());
             settingsMenu.DropDownItems.Add(new ToolStripMenuItem("符號：永遠半形（唔會變全形）") { Enabled = false });
+
+            // ---- 聯想字記憶 ----
+            _assocClearItem = new ToolStripMenuItem("清空聯想字記憶…", null, (s, e) => ClearAssocMemory());
+            var assocMenu = new ToolStripMenuItem("聯想字");
+            assocMenu.DropDownItems.Add(new ToolStripMenuItem("打完一個字，列出你接住最常打嘅字") { Enabled = false });
+            assocMenu.DropDownItems.Add(new ToolStripSeparator());
+            assocMenu.DropDownItems.Add(_assocItem);
+            assocMenu.DropDownItems.Add(_assocClearItem);
 
             var menu = new ContextMenuStrip();
             menu.Items.Add(new ToolStripMenuItem(Program.AppName + "  " + Program.Version) { Enabled = false });
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add(_modeItem);
+            menu.Items.Add(assocMenu);
             menu.Items.Add(settingsMenu);
             menu.Items.Add(new ToolStripMenuItem("輸入法說明 / 速成碼表", null, (s, e) => ShowHelp()));
             menu.Items.Add(new ToolStripSeparator());
@@ -256,6 +296,26 @@ namespace QuickIME
             UpdateTray();
             Program.Log("ctor: done");
         }
+
+        /// <summary>聯想窗自動收起時間（毫秒）。</summary>
+        private const int AssocHideMs = 6000;
+
+        private void RestartAssocHideTimer()
+        {
+            if (_assocHideTimer == null) return;
+            _assocHideTimer.Stop();
+            if (_hook.AssocActive) _assocHideTimer.Start();
+        }
+
+        /// <summary>把記憶寫入檔案（失敗都唔會吵 —— 網吧環境寫唔到係正常）。</summary>
+        private void SaveAssoc()
+        {
+            string path = Settings.AssocFilePath;
+            if (path == null) return;
+            if (!_assoc.SaveMemory(path))
+                Program.Log("assoc: save failed -> " + path);
+        }
+
 
         private static ToolStripMenuItem MakeCheck(string text, bool value, EventHandler onClick)
         {
@@ -303,11 +363,66 @@ namespace QuickIME
             Program.Log("settings: block ctrl+space = " + _hook.Gate.CtrlSpaceBlocked);
         }
 
+        private void ToggleAssoc()
+        {
+            _settings.AssocEnabled = !_settings.AssocEnabled;
+            _hook.AssocEnabled = _settings.AssocEnabled;
+            _settings.Save();
+            if (!_settings.AssocEnabled)
+            {
+                _assocHideTimer.Stop();
+                _hook.ResetAssoc();
+                _cand.HideNow();
+            }
+            SyncSettingsMenu();
+            Program.Log("settings: assoc = " + _settings.AssocEnabled);
+        }
+
+        /// <summary>清空聯想字記憶（先確認，因為呢個動作不可逆）。</summary>
+        private void ClearAssocMemory()
+        {
+            int pairs = _assoc.LearnedPairs;
+            if (pairs == 0)
+            {
+                MessageBox.Show("目前未有任何聯想字記憶（你仲未打過字，或者之前已經清空過）。",
+                    Program.AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            var r = MessageBox.Show(
+                "確定要清空聯想字記憶嗎？\n\n" +
+                "  • 會刪除你打過嘅 " + pairs + " 組聯想學習記錄\n" +
+                "  • 之後會返去出廠預設嘅聯想詞表\n" +
+                "  • 速成候選字次序唔會受影響\n\n" +
+                "呢個動作無法復原。",
+                Program.AppName + " - 清空聯想字記憶",
+                MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2);
+
+            if (r != DialogResult.Yes) return;
+
+            _hook.FlushAssocSave();
+            string path = Settings.AssocFilePath;
+            bool ok = _assoc.ClearAndSave(path);
+            _hook.ResetAssoc();
+            _cand.HideNow();
+            SyncSettingsMenu();
+
+            Program.Log("assoc: cleared " + pairs + " pairs, saved=" + ok);
+            ShellNotify.Show(Program.AppName + " - 聯想字記憶已清空",
+                ok ? "已重設為出廠預設。你之後打的字會重新學習。"
+                   : "記憶已重設，但寫入檔案失敗（可能係資料夾唔可寫）。");
+        }
+
         private void SyncSettingsMenu()
         {
             _shiftLeftItem.Checked = _hook.Gate.IsSideEnabled(ToggleGate.LeftSide);
             _shiftRightItem.Checked = _hook.Gate.IsSideEnabled(ToggleGate.RightSide);
             _ctrlSpaceItem.Checked = _hook.Gate.CtrlSpaceBlocked;
+
+            _assocItem.Checked = _settings.AssocEnabled;
+            _assocClearItem.Text = _assoc.LearnedPairs > 0
+                ? "清空聯想字記憶…（已學習 " + _assoc.LearnedPairs + " 組）"
+                : "清空聯想字記憶…";
 
             string hint = ToggleGate.Describe(_hook.Gate.Sides);
             _tray.Text = _paused
@@ -315,10 +430,17 @@ namespace QuickIME
                 : Program.AppName + "（" + (_hook.ChineseMode ? "速成" : "英文") + "／" + hint + "）";
         }
 
+
         private void ToggleMode()
         {
             _hook.ChineseMode = !_hook.ChineseMode;
-            if (!_hook.ChineseMode) _composer.Reset();
+            if (!_hook.ChineseMode)
+            {
+                _composer.Reset();
+                _assocHideTimer.Stop();
+                _hook.ResetAssoc();
+                _cand.HideNow();
+            }
             UpdateTray();
         }
 
@@ -327,9 +449,17 @@ namespace QuickIME
         {
             _paused = !_paused;
             _hook.Enabled = !_paused;
-            if (_paused) { _composer.Reset(); _cand.Hide(); _hook.Gate.Reset(); }
+            if (_paused)
+            {
+                _composer.Reset();
+                _cand.HideNow();
+                _hook.Gate.Reset();
+                _assocHideTimer.Stop();
+                _hook.ResetAssoc();
+            }
             UpdateTray();
         }
+
 
         private void UpdateTray()
         {
@@ -414,6 +544,30 @@ namespace QuickIME
             sb.AppendLine("  本程式預設把它完全攔住（按了完全沒反應）。");
             sb.AppendLine("  想恢復原本的 Ctrl+空白 行為：右鍵圖示 → 設定 → 取消勾選那一項。");
             sb.AppendLine();
+            sb.AppendLine("【聯想字：打完一個字，提示下一個字】");
+            sb.AppendLine("  例：你打「你」→ 下面列出「好 嗎 係 唔 的 有 會 想 了」");
+            sb.AppendLine("     按數字 1-9 直接選，第二個字之後又會再提示下一次。");
+            sb.AppendLine();
+            sb.AppendLine("  佢會「學」你嘅習慣：");
+            sb.AppendLine("    你打「你」之後成日接「係」，打多幾次，「係」就會排到最前，");
+            sb.AppendLine("    好似拼音輸入法咁越用越貼你。");
+            sb.AppendLine();
+            sb.AppendLine("  聯想窗操作：");
+            sb.AppendLine("    數字 1-9    選聯想字（選完會繼續提示下一個字）");
+            sb.AppendLine("    空格        收起聯想窗（唔會上屏任何東西）");
+            sb.AppendLine("    Esc         收起聯想窗");
+            sb.AppendLine("    直接打速成碼  照常打字（聯想窗會自動收起）");
+            sb.AppendLine("  （聯想窗 6 秒無用會自動收埋，唔會阻住畫面）");
+            sb.AppendLine();
+            sb.AppendLine("  聯想字只會建議「單一個中文字」；標點、英文、數字都唔會學。");
+            sb.AppendLine("  速成候選字嘅次序完全唔受影響（呢個係刻意設計）。");
+            sb.AppendLine();
+            sb.AppendLine("  ★ 清空聯想字記憶：右鍵圖示 → 聯想字 → 清空聯想字記憶…");
+            sb.AppendLine("    清空之後會返去出廠預設嘅聯想詞表，你再打就會重新學過。");
+            sb.AppendLine("    記憶存在 assoc.txt，可以人手刪除（見下面「設定檔」）。");
+            sb.AppendLine();
+            sb.AppendLine("  唔想用聯想字：右鍵圖示 → 聯想字 → 取消勾選「聯想字」。");
+            sb.AppendLine();
             sb.AppendLine("【連打】打滿兩個碼後再打字母，會自動送出第一個字，然後繼續打，");
             sb.AppendLine("        所以你可以一路打「abcdef...」連續出字。");
             sb.AppendLine();
@@ -427,12 +581,16 @@ namespace QuickIME
             sb.AppendLine("  - 防毒軟體可能詢問鍵盤掛鉤，請選「允許」。");
             sb.AppendLine();
             sb.AppendLine("【設定檔】");
-            sb.AppendLine("  %APPDATA%\\QuickIME\\settings.ini，刪掉即回覆預設值。");
+            sb.AppendLine("  %APPDATA%\\QuickIME\\settings.ini   設定（刪掉即回覆預設值）");
+            sb.AppendLine("  %APPDATA%\\QuickIME\\assoc.txt      聯想字學習記憶");
+            sb.AppendLine("  若 AppData 被鎖，兩個檔會改放 exe 旁邊的 QuickIME\\ 資料夾。");
             return sb.ToString();
         }
 
         private void ExitApp()
         {
+            try { _assocHideTimer.Stop(); } catch { }
+            _hook.FlushAssocSave();
             _hook.Dispose();
             _tray.Visible = false;
             _tray.Dispose();
@@ -497,12 +655,14 @@ namespace QuickIME
         {
             if (disposing)
             {
+                if (_assocHideTimer != null) { _assocHideTimer.Stop(); _assocHideTimer.Dispose(); }
                 if (_hook != null) _hook.Dispose();
                 if (_tray != null) { _tray.Visible = false; _tray.Dispose(); }
                 if (_cand != null) _cand.Dispose();
             }
             base.Dispose(disposing);
         }
+
     }
 
     /// <summary>簡單設定持久化（放在使用者 AppData，刪掉即重設）。</summary>
@@ -517,6 +677,9 @@ namespace QuickIME
         /// <summary>攔住 Ctrl+空白（唔會轉全形符號）。預設開。</summary>
         public bool BlockCtrlSpace = true;
 
+        /// <summary>聯想字（打完一個字之後提示下一個字）。預設開。</summary>
+        public bool AssocEnabled = true;
+
         /// <summary>
         /// 設定檔路徑。若 AppData 被鎖（網吧 / 受管制電腦常見）就回傳 null，
         /// 之後一律當「冇設定檔」處理 —— 寧願唔記得設定，都唔可以開唔到程式。
@@ -525,27 +688,60 @@ namespace QuickIME
         {
             get
             {
-                string dir = null;
-                try
-                {
-                    dir = System.IO.Path.Combine(
-                        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "QuickIME");
-                    System.IO.Directory.CreateDirectory(dir);
-                }
-                catch
-                {
-                    // 退而求其次：放在 exe 同一個資料夾（USB 手指情境通常可寫）
-                    try
-                    {
-                        dir = System.IO.Path.Combine(
-                            System.IO.Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), "QuickIME");
-                        System.IO.Directory.CreateDirectory(dir);
-                    }
-                    catch { return null; }
-                }
-                return System.IO.Path.Combine(dir, "settings.ini");
+                string dir = DataDir;
+                return dir == null ? null : System.IO.Path.Combine(dir, "settings.ini");
             }
         }
+
+        /// <summary>聯想字記憶檔的完整路徑（與 settings.ini 同一個資料夾）。</summary>
+        public static string AssocFilePath
+        {
+            get
+            {
+                string dir = DataDir;
+                return dir == null ? null : System.IO.Path.Combine(dir, Assoc.MemoryFileName);
+            }
+        }
+
+        /// <summary>
+        /// 資料夾：優先用 AppData，唔可寫就退回 exe 同目錄（USB 手指通常可寫）。
+        /// 兩處都唔得就回傳 null。快取結果，避免每次呼叫都試一次。
+        /// </summary>
+        private static string _cachedDir;
+        private static bool _dirTried;
+
+        private static string DataDir
+        {
+            get
+            {
+                if (_dirTried) return _cachedDir;
+                _dirTried = true;
+                try
+                {
+                    string dir = System.IO.Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "QuickIME");
+                    System.IO.Directory.CreateDirectory(dir);
+                    _cachedDir = dir;
+                    return _cachedDir;
+                }
+                catch { }
+
+                // 退而求其次：放在 exe 同一個資料夾（USB 手指情境通常可寫）
+                try
+                {
+                    string dir = System.IO.Path.Combine(
+                        System.IO.Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), "QuickIME");
+                    System.IO.Directory.CreateDirectory(dir);
+                    _cachedDir = dir;
+                    return _cachedDir;
+                }
+                catch { }
+
+                _cachedDir = null;
+                return null;
+            }
+        }
+
 
         public static Settings Load()
         {
@@ -578,6 +774,7 @@ namespace QuickIME
                 else if (k == "LastVersionSeen") LastVersionSeen = v;
                 else if (k == "ShiftSides") ShiftSides = ParseSides(v);
                 else if (k == "BlockCtrlSpace") BlockCtrlSpace = (v != "0");
+                else if (k == "AssocEnabled") AssocEnabled = (v != "0");
             }
         }
 
@@ -587,6 +784,7 @@ namespace QuickIME
             return "ChineseMode=" + (ChineseMode ? "1" : "0") + "\r\n" +
                    "ShiftSides=" + FormatSides(ShiftSides) + "\r\n" +
                    "BlockCtrlSpace=" + (BlockCtrlSpace ? "1" : "0") + "\r\n" +
+                   "AssocEnabled=" + (AssocEnabled ? "1" : "0") + "\r\n" +
                    "LastVersionSeen=" + LastVersionSeen + "\r\n";
         }
 
@@ -631,8 +829,9 @@ namespace QuickIME
             LastVersionSeen = Program.Version;
             Save();
             ShellNotify.Show(
-                Program.AppName + " 已啟動",
-                "右 Shift 單按 = 切換中／英（可在右鍵選單改）。符號永遠半形，Ctrl+空白已攔住。");
+                Program.AppName + " " + Program.Version + " 已啟動",
+                "新增「聯想字」：打完一個字會提示下一個字，仲會記住你打得最多嘅組合。" +
+                "右鍵圖示 → 聯想字 → 可以清空記憶。");
         }
     }
 

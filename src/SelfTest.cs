@@ -292,12 +292,145 @@ namespace QuickIME
             st3.Apply(new[] { "ShiftSides=垃圾" });
             Check(st3.ShiftSides == ShiftToggleSides.Right, "亂值 -> 安全回預設（右）");
 
+            // 聯想字設定（預設開；ini 讀寫往返）
+            Check(new Settings().AssocEnabled, "預設開啟聯想字");
+            var st4 = new Settings();
+            st4.AssocEnabled = false;
+            Check(st4.ToIni().Contains("AssocEnabled=0"), "寫出 AssocEnabled=0");
+            var st5 = new Settings();
+            st5.Apply(st4.ToIni().Split(new[] { "\r\n" }, StringSplitOptions.None));
+            Check(!st5.AssocEnabled, "讀回 AssocEnabled = false");
+
+            // ---- 聯想字（Assoc）----
+            RunAssocTests(dict);
+
             Console.WriteLine();
             Console.WriteLine(_fail == 0
                 ? "*** 全部 " + _total + " 項通過 ***"
                 : ("*** 有 " + _fail + " / " + _total + " 項失敗 ***"));
             return _fail == 0 ? 0 : 1;
         }
+
+        /// <summary>聯想字的完整測試：解析、學習、排序、清空、持久化、中文判定。</summary>
+        private static void RunAssocTests(Dict dict)
+        {
+            Console.WriteLine();
+            Console.WriteLine("--- 聯想字 ---");
+
+            // ---- 中文判定 ----
+            Check(Assoc.IsHanChar('你'), "『你』判定為中文字");
+            Check(Assoc.IsHanChar('港'), "『港』判定為中文字");
+            Check(!Assoc.IsHanChar('a'), "『a』唔係中文字（唔會學）");
+            Check(!Assoc.IsHanChar('1'), "『1』唔係中文字（唔會學）");
+            Check(!Assoc.IsHanChar('，'), "全形逗號唔係中文字（唔會學）");
+            Check(!Assoc.IsHanChar(' '), "空格唔係中文字（唔會學）");
+
+            // ---- 出廠詞表解析 ----
+            var parsed = Assoc.ParseSeed(
+                "# 註解行\n" +
+                "你 好 嗎 係\n" +
+                "我 係 都\n" +
+                "壞行\n" +                     // 冇分隔符 -> 跳過
+                "多字 唔 應該 收\n" +          // 第一欄唔係單字 -> 跳過
+                "你 唔 好\n");                 // 同一個字重複出現 -> 合併、去重
+            Check(parsed.Count == 2, "詞表解析：只有 2 個有效的單字條目 (實際 " + parsed.Count + ")");
+
+            var map = new Dictionary<string, List<string>>();
+            foreach (var kv in parsed) map[kv.Key] = kv.Value;
+            Check(map.ContainsKey("你"), "詞表有『你』");
+            Check(map.ContainsKey("我"), "詞表有『我』");
+            Check(!map.ContainsKey("多字"), "第一欄唔係單字 -> 被跳過");
+            Eq("好|嗎|係|唔", string.Join("|", map["你"].ToArray()),
+                "『你』的聯想次序（合併後保留首次出現次序、已去重）");
+
+            // ---- 載入詞表 + 查詢 ----
+            var a = new Assoc();
+            a.LoadSeed("你 好 嗎 係\n我 係 都 唔\n");
+
+            var items = a.Lookup("你", "");
+            Check(items.Count > 0, "『你』有聯想字");
+            Eq("好", items[0], "『你』第一個聯想 = 好");
+            Check(Contains(items, "嗎"), "『你』的聯想包含『嗎』");
+            Check(Contains(items, "係"), "『你』的聯想包含『係』");
+
+            // 完全冇線索的字 -> 通用常用字補底（一定要有嘢揀）
+            var generic = a.Lookup("龘", "");
+            Check(generic.Count > 0, "冇任何記錄的字亦有通用補底（唔會空白）");
+
+            // ---- 學習：次數決定排序 ----
+            var b = new Assoc();
+            b.LoadSeed("你 好 嗎 係\n");
+
+            Eq("好", b.Lookup("你", "")[0], "學習前：『你』→ 好");
+
+            // 連打 5 次「你 → 係」，應該爬到最前
+            for (int i = 0; i < 5; i++) b.Learn("你", "係");
+            Eq("係", b.Lookup("你", "")[0], "學 5 次之後：『你』→ 係 排第一（似拼音輸入法）");
+            Eq("1", b.LearnedPairs.ToString(), "已學習組合數 = 1（同一組合重複學習只算一組）");
+
+            // 再多打幾次「嗎」，就會蓋過「係」
+            for (int i = 0; i < 6; i++) b.Learn("你", "嗎");
+            Eq("嗎", b.Lookup("你", "")[0], "再學 6 次『嗎』-> 爬到第一");
+
+            // 未學過的字仍然保留在後面
+            Check(Contains(b.Lookup("你", ""), "好"), "未學過的內建聯想仍然保留");
+
+            // ---- 前綴收窄 ----
+            var c2 = new Assoc();
+            c2.LoadSeed("你 好 嗎 係 唔 的\n");
+            var narrow = c2.Lookup("你", "好");
+            Check(narrow.Count == 1 && narrow[0] == "好", "前綴『好』只收窄到『好』");
+            Check(c2.Lookup("你", "嗎").Count == 1, "前綴『嗎』收窄到『嗎』");
+            Check(c2.Lookup("你", "香").Count == 0, "冇字接得上 -> 回傳空（交回速成）");
+
+            // ---- 唔會學到標點 / 英文 ----
+            var d2 = new Assoc();
+            d2.Learn("你", "，");
+            d2.Learn("你", "a");
+            d2.Learn("你", "1");
+            Eq("0", d2.LearnedPairs.ToString(), "學習標點／英文／數字唔會被記錄（LearnedPairs 仍為 0）");
+
+            // ---- 持久化往返 ----
+            var e2 = new Assoc();
+            e2.LoadSeed("你 好 嗎\n");
+            e2.Learn("你", "係");
+            e2.Learn("你", "係");
+            e2.Learn("真", "係");
+            string memText = e2.ToMemoryText();
+            Check(memText.StartsWith(Assoc.MemoryHeader), "記憶檔有 magic 標頭");
+            Check(memText.Contains(">你"), "記憶檔有『>你』段落");
+            Check(memText.Contains("係=2"), "記憶檔記錄『係』出現 2 次");
+
+            var f2 = new Assoc();
+            f2.LoadSeed("你 好 嗎\n");
+            f2.LoadMemoryText(memText);
+            Eq("2", f2.LearnedPairs.ToString(), "由文字載入 -> 學到 2 組");
+            Eq("係", f2.Lookup("你", "")[0], "載入後排序保持：『係』仍然第一");
+
+            // ---- 壞檔容錯 ----
+            var g2 = new Assoc();
+            g2.LoadSeed("你 好\n");
+            g2.LoadMemoryText("完全垃圾\n沒有分隔\n>你\n壞資料\n===　===\n");
+            Check(g2.LearnedPairs == 0, "壞記憶檔 -> 安全地當冇記憶（唔會拋例外）");
+            Check(g2.Lookup("你", "").Count > 0, "壞記憶檔 -> 內建詞表仍然可用");
+
+            // ---- 清空記憶 ----
+            var h2 = new Assoc();
+            h2.LoadSeed("你 好 嗎\n");
+            for (int i = 0; i < 9; i++) h2.Learn("你", "嗎");
+            Eq("嗎", h2.Lookup("你", "")[0], "清空前：學過的『嗎』排第一");
+            h2.ClearMemory();
+            Eq("0", h2.LearnedPairs.ToString(), "清空後：已學習組合數 = 0");
+            Eq("好", h2.Lookup("你", "")[0], "清空後：返去出廠預設（『好』第一）");
+            Check(Contains(h2.Lookup("你", ""), "嗎"), "清空後：內建聯想『嗎』仍然存在");
+
+            // ---- 聯想唔會影響速成候選次序（本專案最重要的護欄）----
+            string firstHi = dict.Lookup("hi", 2)[0];
+            var k2 = new Assoc();
+            for (int i = 0; i < 20; i++) k2.Learn("我", "係");
+            Eq(firstHi, dict.Lookup("hi", 2)[0], "學習聯想之後，速成 'hi' 首選次序完全不變");
+        }
+
 
         private static bool Contains(IList<string> l, string s)
         {

@@ -5,7 +5,7 @@
 不需要安裝任何輸入法框架，雙擊即用。
 
 ```
-QuickIME.exe  (93 KB，字典已內嵌)
+QuickIME.exe  (124 KB，字典 + 聯想詞表已內嵌)
 ```
 
 ---
@@ -14,8 +14,8 @@ QuickIME.exe  (93 KB，字典已內嵌)
 
 | 下載 | 檔案 | 說明 |
 |------|------|------|
-| **[QuickIME.exe](https://github.com/kay786-003/quick-ime-source/releases/download/v2.0/QuickIME.exe)** | 單一執行檔，雙擊即用（字典已內嵌） |
-| **[速成輸入法_v2.0.zip](https://github.com/kay786-003/quick-ime-source/releases/download/v2.0/QuickIME-v2.0.zip)** | exe + 字典 + 使用說明 + 示意圖 |
+| **[QuickIME.exe](https://github.com/kay786-003/quick-ime-source/releases/download/v2.1/QuickIME.exe)** | 單一執行檔，雙擊即用（字典已內嵌） |
+| **[速成輸入法_v2.1.zip](https://github.com/kay786-003/quick-ime-source/releases/download/v2.1/QuickIME-v2.1.zip)** | exe + 字典 + 使用說明 + 示意圖 |
 
 > 也可以到 **[Releases](https://github.com/kay786-003/quick-ime-source/releases)** 頁面查看所有正式版本。
 
@@ -26,7 +26,7 @@ QuickIME.exe  (93 KB，字典已內嵌)
 1. **用 Releases 頁面** —— `github.com` 的 release 下載通常比 raw 穩定
 2. **用鏡像加速**，例如在連結前加上 `https://ghproxy.net/`：
    ```
-   https://ghproxy.net/https://github.com/kay786-003/quick-ime-source/releases/download/v2.0/QuickIME.exe
+   https://ghproxy.net/https://github.com/kay786-003/quick-ime-source/releases/download/v2.1/QuickIME.exe
    ```
 3. **先下載到 USB 手指**，之後去網吧直接插手指用，不必每次重下載
 
@@ -52,7 +52,7 @@ QuickIME.exe  (93 KB，字典已內嵌)
 ```powershell
 Get-FileHash .\QuickIME.exe -Algorithm SHA256
 .\QuickIME.exe --version      # 應顯示 2.0
-.\QuickIME.exe --selftest     # 應顯示全部 75 項通過
+.\QuickIME.exe --selftest     # 應顯示全部 115 項通過
 ```
 
 > `--selftest` 會驗證字典完整性與組字流程，這比比對雜湊更能證明檔案沒問題。
@@ -115,6 +115,7 @@ Get-FileHash .\QuickIME.exe -Algorithm SHA256
 - ✅ **空格 = 下一頁**（微軟速成慣例）
 - ✅ 數字鍵 1–9 選字
 - ✅ 連打（打滿兩碼再打字母會自動上屏首選）
+- ✅ **聯想字：打完一個字自動提示下一個字，會學習你的用字習慣**（見下節）
 - ✅ **可設定左／右 Shift 單按切換中英**（見下節，打機長按 Shift 不會誤切換）
 - ✅ **符號永遠半形**，可攔住 `Ctrl+空白`（不會誤轉全形）
 - ✅ **系統匣圖示依模式變色**（藍＝中文／灰＝英文／深灰＝暫停）
@@ -123,7 +124,52 @@ Get-FileHash .\QuickIME.exe -Algorithm SHA256
 
 ---
 
-## 🆕 v2.0 更新重點（打機黨）
+## 🆕 v2.1 更新重點：聯想字（會學習你）
+
+打完一個中文字，自動列出「最可能接住落去」的字，按數字鍵直接選：
+
+```
+聯想  你
+ 1   2   3   4   5   6   7   8   9
+好  嗎  係  唔  的  有  會  想  了
+```
+
+### 同 Windows 內建聯想字的分別：**佢會學你**
+
+Windows 的聯想字是固定的。本專案的聯想字會**記錄你的用字習慣**：
+
+| 情況 | 結果 |
+|------|------|
+| 你打完「你」之後經常接「係」 | 打多幾次，「係」由第 3 位爬到第 1 位 |
+| 之後改用「嗎」多啲 | 「嗎」又會爬到第一 |
+| 你未用過的組合 | 保留出廠預設次序 |
+
+排序規則：**學過的排前（次數越多越前），未學過的保留出廠次序。**
+
+### 聯想窗操作
+
+| 按鍵 | 功能 |
+|------|------|
+| `1`–`9` | 選聯想字（選完繼續提示下一個字） |
+| `空白鍵` / `Esc` | 收起聯想窗（不上屏任何東西） |
+| 直接打速成碼 | 照常打字（聯想窗自動收起） |
+
+聯想窗 **6 秒**無操作會自動收起。只建議單一中文字；標點、英文、數字都不會學。
+
+### 🧹 清空聯想字記憶
+
+右鍵系統匣圖示 → **聯想字** → **清空聯想字記憶…**
+
+- 會確認一次（無法復原）
+- 清空後回復**出廠預設**聯想詞表，之後重新學習
+- **速成候選字次序完全不受影響**
+
+記憶存在 `%APPDATA%\QuickIME\assoc.txt`（純文字，可自行檢視或編輯）；
+刪掉該檔等同清空。不想用聯想字：右鍵 → **聯想字** → 取消勾選即可。
+
+---
+
+## v2.0 更新重點（打機黨）
 
 v1.0 有一個對打機的人很致命的設計：**單按任何一邊 Shift 都會切換中英**。
 長按左 Shift 跑步，一放開就變成英文，角色突然不受控。
@@ -247,6 +293,9 @@ v2.0 全部改掉：
 原因：速成使用者靠記憶「第幾個位」打字，一旦改動次序就會打錯字。
 
 > 這是刻意的設計決策。若你 fork 本專案，**請勿**加入字頻排序。
+>
+> **聯想字不受此限**：聯想字是上屏之後另一個視窗的建議，
+> 它學習用字習慣只改變「聯想窗」內的次序，速成候選字次序永遠不變。
 
 ---
 
@@ -282,14 +331,16 @@ dist\qdict.bin       # 字典（可選，方便自行替換）
 ├── src/
 │   ├── Dict.cs               # 字典引擎（702 bucket 索引）
 │   ├── Composer.cs           # 組字狀態機（與 UI/掛鉤解耦，可單測）
+│   ├── Assoc.cs              # 聯想字引擎（學習 + 出廠詞表 + 清空）
+│   ├── assoc-seed.txt        # 聯想字出廠詞表（嵌入 exe）
 │   ├── ToggleGate.cs         # 中英切換 / Ctrl+空白 判定（純邏輯，可單測）
 │   ├── Keyboard.cs           # Win32 低階鍵盤掛鉤 + SendInput
-│   ├── CandidateForm.cs      # 候選字視窗（WS_EX_NOACTIVATE）
+│   ├── CandidateForm.cs      # 候選字 / 聯想字視窗（WS_EX_NOACTIVATE）
 │   ├── Program.cs            # 主程式 / 系統匣 / 設定 / 說明
-│   ├── SelfTest.cs           # 75 項自我測試
+│   ├── SelfTest.cs           # 115 項自我測試
 │   ├── GameTest.cs           # 打機情境測試（長按 Shift 不誤切換）
 │   ├── IconShot.cs           # 系統匣圖示截圖
-│   └── UiShot.cs             # 候選窗截圖（離線檢查 UI）
+│   └── UiShot.cs             # 候選窗 / 聯想窗截圖（離線檢查 UI）
 ├── tools/
 │   ├── gen-dict.ps1          # 由 yaml 產生 qdict.bin
 │   └── package-repo.ps1      # 打包成可上傳 GitHub 的 zip
@@ -307,7 +358,7 @@ dist\qdict.bin       # 字典（可選，方便自行替換）
 ### 執行測試
 
 ```powershell
-.\dist\QuickIME.exe --selftest          # 75 項自我測試
+.\dist\QuickIME.exe --selftest          # 115 項自我測試
 .\dist\QuickIME.exe --gametest          # 打機情境測試（長按 Shift + WASD 不誤切換）
 .\dist\QuickIME.exe --uishop shot.png   # 產生候選窗截圖
 .\dist\QuickIME.exe --iconshot .\icons  # 產生三種狀態的系統匣圖示
@@ -346,7 +397,7 @@ Bucket 索引：
 - ✅ 需要**放 USB 帶著走**、用完不留痕跡的人
 - ✅ 想學速成，需要一個不干擾系統的練習工具
 
-**不適合**：需要雲端詞庫、聯想詞、簡繁轉換、個人化學習的使用者
+**不適合**：需要雲端詞庫、簡繁轉換、整句預測的使用者
 （本專案刻意保持精簡，只做「速成查字」這一件事。）
 
 ---

@@ -50,6 +50,24 @@ namespace QuickIME
             Save(form, p3);
             Console.WriteLine("無候選 -> " + p3);
 
+            // 聯想字畫面（打完「你」之後列出下一個字）
+            var assoc = new Assoc();
+            assoc.LoadSeed("你 好 嗎 係 唔 的 有 會 想\n");
+            var items = assoc.Lookup("你", "");
+            Console.WriteLine("聯想字候選數 = " + items.Count);
+            for (int i = 0; i < items.Count; i++) Console.WriteLine("  [" + i + "] = " + items[i]);
+            form.ShowAssoc("你", "", items);
+            // 寬度要同 CandidateForm 內部計算完全一致（PadX*2 + CellW*count），
+            // 否則右邊會露出一截上一次的畫面。
+            int assocW = 7 * 2 + 44 * Math.Min(items.Count, CandidateForm.AssocPerPage);
+            int assocH = 3 * 2 + 24 + 44 + 18;
+            form.Bounds = new Rectangle(0, 0, assocW, assocH);
+            form.RepaintOnly();
+            Application.DoEvents();
+            string p4 = Path.Combine(Path.GetDirectoryName(outPath), "shot-assoc.png");
+            Save(form, p4);
+            Console.WriteLine("聯想字 -> " + p4);
+
             form.Close();
             form.Dispose();
             return 0;
