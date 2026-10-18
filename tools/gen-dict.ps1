@@ -36,7 +36,7 @@ $TOTAL  = 26 + 26 * 26
 $buckets = New-Object 'System.Collections.Generic.List[string][]' $TOTAL
 for ($i = 0; $i -lt $TOTAL; $i++) { $buckets[$i] = New-Object 'System.Collections.Generic.List[string]' }
 
-$seen = @{}
+$seen = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
 $n = 0; $bad = 0; $multi = 0
 
 foreach ($ln in $lines) {
@@ -58,8 +58,7 @@ foreach ($ln in $lines) {
         $idx = $SINGLE + ([int][char]$code[0] - 97) * 26 + ([int][char]$code[1] - 97)
     }
     $key = "$idx|$ch"
-    if ($seen.ContainsKey($key)) { continue }
-    $seen[$key] = $true
+    if (-not $seen.Add($key)) { continue }
     $buckets[$idx].Add($ch)     # 保留原表次序，不排序
     $n++
 }
