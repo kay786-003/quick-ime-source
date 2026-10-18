@@ -14,8 +14,8 @@ QuickIME.exe  (124 KB，字典 + 聯想詞表已內嵌)
 
 | 下載 | 檔案 | 說明 |
 |------|------|------|
-| **[QuickIME.exe](https://github.com/kay786-003/quick-ime-source/releases/download/v2.1/QuickIME.exe)** | 單一執行檔，雙擊即用（字典已內嵌） |
-| **[速成輸入法_v2.1.zip](https://github.com/kay786-003/quick-ime-source/releases/download/v2.1/QuickIME-v2.1.zip)** | exe + 字典 + 使用說明 + 示意圖 |
+| **[QuickIME.exe](https://github.com/kay786-003/quick-ime-source/releases/download/v2.1/QuickIME.exe)** | 單一執行檔，雙擊即用（字典 + 聯想詞表已內嵌） |
+| **[QuickIME-v2.1.zip](https://github.com/kay786-003/quick-ime-source/releases/download/v2.1/QuickIME-v2.1.zip)** | exe + 字典 + 使用說明 + 示意圖 |
 
 > 也可以到 **[Releases](https://github.com/kay786-003/quick-ime-source/releases)** 頁面查看所有正式版本。
 
