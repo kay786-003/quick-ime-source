@@ -21,14 +21,64 @@ QuickIME.exe  (127 KB，字典 + 聯想詞表已內嵌)
 
 ### 網吧環境下載建議
 
-因為 GitHub 在中國大陸有時連線不穩，如果 `raw.githubusercontent.com` 很慢：
+因為 GitHub 在中國大陸有時連線不穩，如果 `github.com` / `raw.githubusercontent.com` 很慢，
+可以在網址前面加一個**鏡像前綴**。
 
-1. **用 Releases 頁面** —— `github.com` 的 release 下載通常比 raw 穩定
-2. **用鏡像加速**，例如在連結前加上 `https://ghproxy.net/`：
-   ```
-   https://ghproxy.net/https://github.com/kay786-003/quick-ime-source/releases/download/v2.2/QuickIME.exe
-   ```
-3. **先下載到 USB 手指**，之後去網吧直接插手指用，不必每次重下載
+> **用法**：把原本的 GitHub 網址**原封不動**貼在前綴後面，不用改任何字。
+>
+> 下面所有鏡像都在 **2026-10-19** 實測過：完整下載 `QuickIME.exe`（130,048 bytes）
+> 與 `QuickIME-v2.2.zip`，SHA256 與 GitHub Release **完全一致**。
+
+| 鏡像前綴 | 實測 | 備註 |
+|----------|------|------|
+| `https://gh-proxy.com/` | ✅ | 目前最穩 |
+| `https://ghfast.top/` | ✅ | |
+| `https://gh.llkk.cc/` | ✅ | |
+| `https://gh-proxy.org/` | ✅ | |
+| `https://gh.monlor.com/` | ✅ | |
+| `https://ghproxy.imciel.com/` | ✅ | |
+| `https://ghfile.geekertao.top/` | ✅ | |
+| `https://gh.nxnow.top/` | ✅ | |
+| `https://gh.sixyin.com/` | ✅ | |
+| `https://cors.isteed.cc/` | ✅ | 通用 CORS 代理，非 GitHub 專用 |
+
+⚠️ **`https://ghproxy.net/` 已失效**（整個站回 `502 Bad Gateway`，不只本專案），
+舊版 README 曾推薦它，現已移除。
+
+鏡像會隨時停站或限流，**一個不行就換下一個**；長期保存請直接下載到 USB 手指。
+
+#### QuickIME.exe 直連（揀一個可以下載的，複製即可）
+
+```
+https://gh-proxy.com/https://github.com/kay786-003/quick-ime-source/releases/download/v2.2/QuickIME.exe
+https://ghfast.top/https://github.com/kay786-003/quick-ime-source/releases/download/v2.2/QuickIME.exe
+https://gh.llkk.cc/https://github.com/kay786-003/quick-ime-source/releases/download/v2.2/QuickIME.exe
+https://gh-proxy.org/https://github.com/kay786-003/quick-ime-source/releases/download/v2.2/QuickIME.exe
+https://gh.monlor.com/https://github.com/kay786-003/quick-ime-source/releases/download/v2.2/QuickIME.exe
+https://ghproxy.imciel.com/https://github.com/kay786-003/quick-ime-source/releases/download/v2.2/QuickIME.exe
+https://ghfile.geekertao.top/https://github.com/kay786-003/quick-ime-source/releases/download/v2.2/QuickIME.exe
+https://gh.nxnow.top/https://github.com/kay786-003/quick-ime-source/releases/download/v2.2/QuickIME.exe
+https://gh.sixyin.com/https://github.com/kay786-003/quick-ime-source/releases/download/v2.2/QuickIME.exe
+https://cors.isteed.cc/https://github.com/kay786-003/quick-ime-source/releases/download/v2.2/QuickIME.exe
+```
+
+想下載 zip 版，把結尾的 `QuickIME.exe` 換成 `QuickIME-v2.2.zip` 就可以。
+
+#### 也可以用 repo 內的備份 exe
+
+`releases/QuickIME.exe` 已經提交在 repo 裡，不經 release asset：
+
+```
+https://raw.githubusercontent.com/kay786-003/quick-ime-source/main/releases/QuickIME.exe
+```
+
+同樣可以套用上面的鏡像前綴（例如
+`https://gh-proxy.com/https://raw.githubusercontent.com/...`）。
+
+#### 最後手段
+
+1. **直接用 Releases 頁面** —— 見頁面頂部原連結，通常最穩
+2. **先下載到 USB 手指**，之後去網吧直接插手指用，不必每次重下載
 
 ### 為什麼放現成 exe 在 repo 裡
 
@@ -43,19 +93,24 @@ QuickIME.exe  (127 KB，字典 + 聯想詞表已內嵌)
 
 ### 檔案校驗
 
-`QuickIME.exe` 是由 CI 即時編譯的，**每次建置的位元組都略有不同**
-（.NET 會嵌入不同的 MVID），所以這裡不寫死單一 SHA256。
-請以 **Release 頁面上傳的那個檔案**為準。
+本專案 v2.2 的 Release 檔案 SHA256（**這是固定值，可直接比對**）：
 
-若你想確認下載到的是否為本專案建置，可在 PowerShell 執行：
+| 檔案 | 大小 | SHA256 |
+|------|------|--------|
+| `QuickIME.exe` | 130,048 bytes | `d099d441fd347a65e94f6ea324375e9206137cb22dbfe1a7d58cea0870b118b8` |
+| `QuickIME-v2.2.zip` | 131,458 bytes | `65168b160a527285051108a8fc103b51f3c72b5265713adcf1f93020e4d95a6e` |
+
+在 PowerShell 執行：
 
 ```powershell
 Get-FileHash .\QuickIME.exe -Algorithm SHA256
-.\QuickIME.exe --version      # 應顯示 2.0
+.\QuickIME.exe --version      # 應顯示 2.2
 .\QuickIME.exe --selftest     # 應顯示全部 129 項通過
 ```
 
-> `--selftest` 會驗證字典完整性與組字流程，這比比對雜湊更能證明檔案沒問題。
+> ⚠️ `releases/` 資料夾裡那份由 CI 自動重建，因為 .NET 每次會嵌入不同的 MVID，
+> 所以它的 SHA256 **與 Release 頁面那份不同**，屬正常現象。
+> 這種情況請改用 `--selftest` 驗證：能全部通過就代表字典與組字流程完好。
 
 ---
 
