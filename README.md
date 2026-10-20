@@ -98,8 +98,8 @@ https://raw.githubusercontent.com/kay786-003/quick-ime-source/main/releases/Quic
 
 | 檔案 | 大小 | SHA256 |
 |------|------|--------|
-| `QuickIME.exe` | 145,920 bytes | `362d8dc287a59b6b774c6ade4ddb2619359fe4e282d529f4b95defa36c2ab9b8` |
-| `QuickIME-v2.4.zip` | 134,484 bytes | `6e53d91f29754fed04e718a941db9309101c18a1defca39a117339bd3df4c208` |
+| `QuickIME.exe` | 145,920 bytes | `7218e324ebb843f7d8e9a6c60ead07f8a05d5dcdc3d2c24609d1750626cd7e42` |
+| `QuickIME-v2.4.zip` | 138,742 bytes | `d7a5499e2c3ea860925c81333554807de22da3c383278a3a39716dcbf6b72e0c` |
 
 在 PowerShell 執行：
 
@@ -108,11 +108,18 @@ Get-FileHash .\QuickIME.exe -Algorithm SHA256
 .\QuickIME.exe --version      # 應顯示 2.4
 .\QuickIME.exe --selftest     # 應顯示全部 147 項通過
 .\QuickIME.exe --hooktest     # 應顯示按鍵流程全部 46 項通過
+.\QuickIME.exe --gametest     # 應顯示打機情境全部通過
 ```
 
-> ⚠️ `releases/` 資料夾裡那份由 CI 自動重建，因為 .NET 每次會嵌入不同的 MVID，
-> 所以它的 SHA256 **與 Release 頁面那份不同**，屬正常現象。
-> 這種情況請改用 `--selftest` 驗證：能全部通過就代表字典與組字流程完好。
+> ⚠️ 同一份原始碼每次編譯出來的 exe **雜湊值都不同**（.NET Framework 的
+> `csc` 沒有 `/deterministic`，每次會嵌入不同的 MVID 與時間戳）。
+> 所以 `releases/` 裡那份、Release 頁面那份、你自己建置的那份，三者 SHA256 都不一樣，
+> **這是正常的**。
+>
+> 真正可靠的驗證方式是功能性的：跑 `--version`（應顯示 2.4）與上面三套測試
+> （147 + 46 + 打機情境全部通過），就代表字典、組字流程、按鍵邏輯都完好。
+> 雜湊值只保證「你下載到的檔案與 Release 完全一致」，不保證「與原始碼編譯結果一致」。
+
 
 ---
 
