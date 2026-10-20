@@ -107,11 +107,15 @@ jobs:
 
       # 非 tag 推送時，把現成 exe 提交回 releases/，方便用 raw 連結直接下載。
       #
-      # 注意：這個步驟曾經在每次 push 都 commit 一次 "chore: update prebuilt"，
-      # 因為 csc（.NET Framework 版）沒有 /deterministic，每次建置的 MVID 與時間戳
-      # 都不同，二進位永遠不可能一致。
-      # 現在改成：只有當 releases/ 裡的 exe 與新版本「行為上不同」時才更新 ——
-      # 用 --version 的輸出當判斷依據，避免無意義的洗版。
+      # 注意 1：這個步驟以前在每次 push 都 commit 一次 "chore: update prebuilt"，
+      #   因為 csc（.NET Framework 版）沒有 /deterministic，每次建置的 MVID 與
+      #   時間戳都不同，二進位永遠不可能一致。
+      #   現在改成：releases/ 已經是同一個版本就跳過，避免無意義的洗版。
+      #
+      # 注意 2：**絕對不可以執行 releases/QuickIME.exe 來讀版本**（例如 --version）。
+      #   一旦執行過，該檔案句柄會被佔住，緊接的 Copy-Item 會失敗：
+      #     "The process cannot access the file ... being used by another process."
+      #   所以改用 FileVersionInfo 讀檔案資源，完全不執行它。
       - name: Commit prebuilt binary to releases/
         if: github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/')
         shell: pwsh
@@ -121,20 +125,22 @@ jobs:
 
           $version = ([System.IO.File]::ReadAllText('VERSION')).Trim()
 
-          # 舊的 prebuilt 版本號（讀不到就當「未知」，觸發更新一次）
+          # 舊的 prebuilt 版本號：讀檔案資源，不執行 exe（避免檔案被鎖住）
           $oldVersion = ""
           if (Test-Path .\releases\QuickIME.exe) {
             try {
-              $oldVersion = (& .\releases\QuickIME.exe --version 2>&1) -join "`n"
+              $info = [System.Diagnostics.FileVersionInfo]::GetVersionInfo(
+                (Resolve-Path .\releases\QuickIME.exe).Path)
+              $oldVersion = $info.FileVersion
             } catch { $oldVersion = "" }
           }
 
-          if ($oldVersion -match [regex]::Escape($version)) {
-            Write-Host "releases/QuickIME.exe 已經是 v$version，略過 commit（避免洗版）"
+          if ($oldVersion -and $oldVersion.StartsWith("$version.")) {
+            Write-Host "releases/QuickIME.exe 已經是 v$version（檔案版本 $oldVersion），略過 commit（避免洗版）"
             exit 0
           }
 
-          Write-Host "更新 releases/QuickIME.exe 至 v$version（舊版：$oldVersion）"
+          Write-Host "更新 releases/QuickIME.exe 至 v$version（舊版：$(if ($oldVersion) { $oldVersion } else { '未知' })）"
           Copy-Item .\dist\QuickIME.exe .\releases\QuickIME.exe -Force
 
           git add releases/QuickIME.exe
