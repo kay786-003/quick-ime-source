@@ -18,7 +18,13 @@ namespace QuickIME
     internal static class Program
     {
         internal const string AppName = "速成輸入法";
-        internal const string Version = "2.3";
+
+        /// <summary>
+        /// 版本號。<see cref="VersionInfo.Version"/> 由 build.ps1 從 VERSION 檔自動產生，
+        /// 所以只有一個地方要改（repo 根的 VERSION），不會再出現
+        /// 「Program.Version 是 2.3 但 zip 名還寫著 v2.3」這種漏改。
+        /// </summary>
+        internal const string Version = VersionInfo.Version;
 
         internal static readonly string LogPath = ResolveLogPath();
 
@@ -53,6 +59,20 @@ namespace QuickIME
             catch { }
         }
 
+        /// <summary>
+        /// 惰性日誌：<see cref="Verbose"/> = false 時**完全不會組字串**。
+        ///
+        /// 為什麼要這樣：掛鉤對延遲極敏感（LowLevelHooksTimeout 預設 300ms，
+        /// 逾時系統會靜默移除掛鉤，輸入法整個失效）。舊版在掛鉤內寫
+        /// <c>Log("hook: vk=" + vk + ...)</c>，即使沒開 log 也會先做字串串接
+        /// 與裝箱。改成這個重載之後，關閉日誌時連 lambda 都不會被呼叫。
+        /// </summary>
+        internal static void Log(Func<string> msg)
+        {
+            if (!Verbose) return;
+            try { Log(msg()); } catch { }
+        }
+
         internal static bool Verbose;
 
         [STAThread]
@@ -82,6 +102,7 @@ namespace QuickIME
                     return IconShot.Run(args.Length > 1 ? args[1] : ".");
                 }
                 if (args[0] == "--gametest") return GameTest.Run();
+                if (args[0] == "--hooktest") return HookTest.Run();
                 if (args[0] == "--diag")
                 {
                     Verbose = true;
@@ -94,6 +115,7 @@ namespace QuickIME
                     Console.WriteLine();
                     Console.WriteLine("  直接執行           啟動輸入法（常駐系統匣）");
                     Console.WriteLine("  --selftest [字典檔] 執行自我測試");
+                    Console.WriteLine("  --hooktest         按鍵流程重播測試（連打／z／數字／Enter／Ctrl 符號）");
                     Console.WriteLine("  --gametest         打機情境測試（長按 Shift 不誤切換）");
                     Console.WriteLine("  --iconshot [資料夾] 產生三種狀態的系統匣圖示");
                     Console.WriteLine("  --uishop [檔案]    產生候選窗 / 聯想窗截圖");
@@ -236,11 +258,18 @@ namespace QuickIME
                         ", learn=" + _settings.AssocLearnEnabled);
 
             // 聯想窗跟隨掛鉤狀態重畫
+            // 注意：掛鉤會用 UiDispatcher 把這個 delegate 丟回 UI 執行緒才真正重畫，
+            // 避免在掛鉤執行緒同步建立視窗（會拖慢輸入，甚至被系統移除掛鉤）。
+            _hook.UiDispatcher = delegate(Action a)
+            {
+                if (_cand.IsDisposed || _cand.Disposing) return;
+                try { _cand.BeginInvoke(a); } catch { /* 視窗已關 */ }
+            };
             _hook.AssocChanged += (s, e) =>
             {
                 if (!_hook.AssocActive) { _cand.HideNow(); return; }
                 _cand.AssocShiftDigits = _hook.AssocShiftDigits;
-                _cand.ShowAssoc(_hook.ContextPrev, _hook.AssocPending, _hook.AssocItems);
+                _cand.ShowAssoc(_hook.ContextPrev, _hook.AssocItems);
                 RestartAssocHideTimer();
             };
 
@@ -268,7 +297,7 @@ namespace QuickIME
             settingsMenu.DropDownItems.Add(new ToolStripSeparator());
             settingsMenu.DropDownItems.Add(_assocItem);
             settingsMenu.DropDownItems.Add(new ToolStripSeparator());
-            settingsMenu.DropDownItems.Add(new ToolStripMenuItem("符號：永遠半形（唔會變全形）") { Enabled = false });
+            settingsMenu.DropDownItems.Add(new ToolStripMenuItem("符號：直接按半形，Ctrl+符號鍵打全形") { Enabled = false });
 
             // ---- 聯想字記憶 ----
             _assocClearItem = new ToolStripMenuItem("清空聯想字記憶…", null, (s, e) => ClearAssocMemory());
@@ -582,12 +611,20 @@ namespace QuickIME
             sb.AppendLine("【按鍵】");
             sb.AppendLine("  空白鍵      下一頁（微軟速成慣例；到最後一頁再按 = 繞返第 1 頁，");
             sb.AppendLine("              循環翻頁，永遠唔會偷偷上屏）");
-            sb.AppendLine("  數字 1-9    選第 1-9 個候選字");
+            sb.AppendLine("  數字 1-9    選第 1-9 個候選字（一頁 9 個；0 不選字）");
             sb.AppendLine("  PageUp / -   上一頁");
             sb.AppendLine("  PageDown / + 下一頁（與空白鍵相同）");
             sb.AppendLine("  退格鍵      刪一個輸入碼");
             sb.AppendLine("  Esc         取消這次輸入");
             sb.AppendLine("  右 Shift（單按）切換中／英文");
+            sb.AppendLine();
+            sb.AppendLine("【全形標點：Ctrl + 符號鍵】");
+            sb.AppendLine("  跟微軟速成一樣，按住 Ctrl 再按符號鍵就是全形：");
+            sb.AppendLine("    Ctrl+,  → ，      Ctrl+.  → 。      Ctrl+;  → ；");
+            sb.AppendLine("    Ctrl+'  → ：      Ctrl+[  → 「      Ctrl+]  → 」");
+            sb.AppendLine("    Ctrl+\\  → 、      Ctrl+-  → －      Ctrl+=  → ＝");
+            sb.AppendLine("  而 ? ! , . 直接按就是半形，不會變全形。");
+            sb.AppendLine("  組字中按 Ctrl+符號鍵，會先上屏目前候選，再出全形標點。");
             sb.AppendLine();
             sb.AppendLine("【中英切換鍵：點解只用右 Shift】");
             sb.AppendLine("  打機時長按 Shift 跑步是常態，若放開 Shift 就切換成英文，");
@@ -599,9 +636,9 @@ namespace QuickIME
             sb.AppendLine("  想左右都可以切換（或者兩邊都關掉），右鍵圖示 → 設定 →");
             sb.AppendLine("  「左邊 / 右邊 Shift 單按切換中／英」。");
             sb.AppendLine();
-            sb.AppendLine("【符號：永遠半形】");
-            sb.AppendLine("  本程式只送 ASCII 半形符號（, . ! ?），不會變成全形（，。！？）。");
-            sb.AppendLine("  想打全形符號時，請用 Windows 的「微軟速成」或直接切換到其他輸入法。");
+            sb.AppendLine("【符號：半形為主，Ctrl 打全形】");
+            sb.AppendLine("  直接按 , . ? ! 只會送出半形（, . ? !），不會自動變成全形。");
+            sb.AppendLine("  要打全形標點就按住 Ctrl 再按符號鍵（見上面「全形標點」一節）。");
             sb.AppendLine();
             sb.AppendLine("【Ctrl+空白：預設攔住】");
             sb.AppendLine("  Ctrl+空白 在微軟速成是「全形／半形」切換，打機緊張時很容易誤按。");
@@ -926,8 +963,8 @@ namespace QuickIME
             Save();
             ShellNotify.Show(
                 Program.AppName + " " + Program.Version + " 已啟動",
-                "聯想字改用 Shift + 數字鍵選字（跟 Windows 速成）；" +
-                "空白鍵改為循環翻頁，到尾頁再按會返第 1 頁，唔會再偷偷上屏。");
+                "新增 Ctrl + 符號鍵打全形標點（，。「」等）；" +
+                "修正連打吞字、尾頁上屏送錯字、數字超界漏字。");
         }
     }
 

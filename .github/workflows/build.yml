@@ -47,10 +47,13 @@ jobs:
       - name: Smoke test the packaged exe
         shell: pwsh
         run: |
-          $process = Start-Process -FilePath .\dist\QuickIME.exe `
-            -ArgumentList '--selftest' -NoNewWindow -PassThru -Wait
-          Write-Host "Packaged exe selftest exit code: $($process.ExitCode)"
-          if ($process.ExitCode -ne 0) { throw "selftest failed" }
+          # 三套測試都要過（舊版只跑 selftest，所以 bug 一個都抓不到）
+          foreach ($suite in @('--selftest', '--hooktest', '--gametest')) {
+            $process = Start-Process -FilePath .\dist\QuickIME.exe `
+              -ArgumentList $suite -NoNewWindow -PassThru -Wait
+            Write-Host "$suite exit code: $($process.ExitCode)"
+            if ($process.ExitCode -ne 0) { throw "$suite failed" }
+          }
 
       - name: Show checksums
         shell: pwsh
@@ -65,11 +68,11 @@ jobs:
           path: |
             dist/QuickIME.exe
             dist/qdict.bin
-            releases/使用說明.txt
-            releases/候選字視窗示意圖.png
+            docs/使用說明.txt
+            docs/screenshot.png
           if-no-files-found: error
 
-      # 只有打 tag（例如 v1.0）時才發 Release，方便直接下載
+      # 只有打 tag（例如 v2.4）時才發 Release，方便直接下載
       - name: Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
@@ -78,6 +81,7 @@ jobs:
         run: |
           $tag = "${{ github.ref_name }}"
           $zip = "QuickIME-$tag.zip"
+          $version = ([System.IO.File]::ReadAllText('VERSION')).Trim()
 
           # 準備上傳檔案
           $stage = "release-stage"
@@ -85,19 +89,29 @@ jobs:
           New-Item -ItemType Directory -Force -Path $inner | Out-Null
           Copy-Item .\dist\QuickIME.exe -Destination $inner
           Copy-Item .\dist\qdict.bin   -Destination $inner
-          Copy-Item .\releases\使用說明.txt -Destination $inner -ErrorAction SilentlyContinue
-          Copy-Item .\releases\候選字視窗示意圖.png -Destination $inner -ErrorAction SilentlyContinue
+          Copy-Item .\docs\使用說明.txt -Destination $inner -ErrorAction SilentlyContinue
+          Copy-Item .\docs\screenshot.png -Destination $inner -ErrorAction SilentlyContinue
 
           Compress-Archive -Path $inner -DestinationPath $zip -Force
           Copy-Item .\dist\QuickIME.exe .\QuickIME.exe
+
+          Write-Host "Releasing v$version as tag $tag"
 
           gh release create $tag `
             "$zip" `
             "QuickIME.exe" `
             --title "速成輸入法 $tag" `
-            --notes "免安裝速成輸入法。下載 ``QuickIME-$tag.zip`` 解壓即用，或直接下載 ``QuickIME.exe``（字典已內嵌）。"
+            --notes "免安裝速成輸入法 v$version。下載 ``QuickIME-$tag.zip`` 解壓即用，或直接下載 ``QuickIME.exe``（字典已內嵌）。
 
-      # 非 tag 推送時，把現成 exe 提交回 releases/，方便直接下載
+          驗證：``QuickIME.exe --version`` 應顯示 $version；``--selftest`` / ``--hooktest`` / ``--gametest`` 應全部通過。"
+
+      # 非 tag 推送時，把現成 exe 提交回 releases/，方便用 raw 連結直接下載。
+      #
+      # 注意：這個步驟曾經在每次 push 都 commit 一次 "chore: update prebuilt"，
+      # 因為 csc（.NET Framework 版）沒有 /deterministic，每次建置的 MVID 與時間戳
+      # 都不同，二進位永遠不可能一致。
+      # 現在改成：只有當 releases/ 裡的 exe 與新版本「行為上不同」時才更新 ——
+      # 用 --version 的輸出當判斷依據，避免無意義的洗版。
       - name: Commit prebuilt binary to releases/
         if: github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/')
         shell: pwsh
@@ -105,6 +119,22 @@ jobs:
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
+          $version = ([System.IO.File]::ReadAllText('VERSION')).Trim()
+
+          # 舊的 prebuilt 版本號（讀不到就當「未知」，觸發更新一次）
+          $oldVersion = ""
+          if (Test-Path .\releases\QuickIME.exe) {
+            try {
+              $oldVersion = (& .\releases\QuickIME.exe --version 2>&1) -join "`n"
+            } catch { $oldVersion = "" }
+          }
+
+          if ($oldVersion -match [regex]::Escape($version)) {
+            Write-Host "releases/QuickIME.exe 已經是 v$version，略過 commit（避免洗版）"
+            exit 0
+          }
+
+          Write-Host "更新 releases/QuickIME.exe 至 v$version（舊版：$oldVersion）"
           Copy-Item .\dist\QuickIME.exe .\releases\QuickIME.exe -Force
 
           git add releases/QuickIME.exe
@@ -112,6 +142,6 @@ jobs:
           if ($LASTEXITCODE -eq 0) {
             Write-Host "releases/QuickIME.exe 無變化，略過 commit"
           } else {
-            git commit -m "chore: update prebuilt QuickIME.exe"
+            git commit -m "chore: update prebuilt QuickIME.exe to v$version"
             git push
           }

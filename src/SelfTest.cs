@@ -430,41 +430,41 @@ namespace QuickIME
             var a = new Assoc();
             a.LoadSeed("你 好 嗎 係\n我 係 都 唔\n");
 
-            var items = a.Lookup("你", "");
+            var items = a.Lookup("你");
             Check(items.Count > 0, "『你』有聯想字");
             Eq("好", items[0], "『你』第一個聯想 = 好");
             Check(Contains(items, "嗎"), "『你』的聯想包含『嗎』");
             Check(Contains(items, "係"), "『你』的聯想包含『係』");
 
             // 完全冇線索的字 -> 通用常用字補底（一定要有嘢揀）
-            var generic = a.Lookup("龘", "");
+            var generic = a.Lookup("龘");
             Check(generic.Count > 0, "冇任何記錄的字亦有通用補底（唔會空白）");
 
             // ---- 學習：次數決定排序 ----
             var b = new Assoc();
             b.LoadSeed("你 好 嗎 係\n");
 
-            Eq("好", b.Lookup("你", "")[0], "學習前：『你』→ 好");
+            Eq("好", b.Lookup("你")[0], "學習前：『你』→ 好");
 
             // 連打 5 次「你 → 係」，應該爬到最前
             for (int i = 0; i < 5; i++) b.Learn("你", "係");
-            Eq("係", b.Lookup("你", "")[0], "學 5 次之後：『你』→ 係 排第一（似拼音輸入法）");
+            Eq("係", b.Lookup("你")[0], "學 5 次之後：『你』→ 係 排第一（似拼音輸入法）");
             Eq("1", b.LearnedPairs.ToString(), "已學習組合數 = 1（同一組合重複學習只算一組）");
 
             // 再多打幾次「嗎」，就會蓋過「係」
             for (int i = 0; i < 6; i++) b.Learn("你", "嗎");
-            Eq("嗎", b.Lookup("你", "")[0], "再學 6 次『嗎』-> 爬到第一");
+            Eq("嗎", b.Lookup("你")[0], "再學 6 次『嗎』-> 爬到第一");
 
             // 未學過的字仍然保留在後面
-            Check(Contains(b.Lookup("你", ""), "好"), "未學過的內建聯想仍然保留");
+            Check(Contains(b.Lookup("你"), "好"), "未學過的內建聯想仍然保留");
 
-            // ---- 前綴收窄 ----
+            // ---- 聯想前綴收窄已移除 ----
+            // 舊版的「打字母收窄聯想」用「中文字.StartsWith("a-z")」比對，永遠 false，
+            // 從上線起就從未生效。v2.4 明碼移除，所以這裡驗證「查詢只吃一個參數」。
             var c2 = new Assoc();
             c2.LoadSeed("你 好 嗎 係 唔 的\n");
-            var narrow = c2.Lookup("你", "好");
-            Check(narrow.Count == 1 && narrow[0] == "好", "前綴『好』只收窄到『好』");
-            Check(c2.Lookup("你", "嗎").Count == 1, "前綴『嗎』收窄到『嗎』");
-            Check(c2.Lookup("你", "香").Count == 0, "冇字接得上 -> 回傳空（交回速成）");
+            Eq("好", c2.Lookup("你")[0], "Lookup(prev) 只按上一個字回傳聯想（前綴機制已移除）");
+            Check(c2.Lookup("你").Count <= Assoc.MaxPerChar, "聯想數量不超過 9（一頁 1-9）");
 
             // ---- 唔會學到標點 / 英文 ----
             var d2 = new Assoc();
@@ -488,7 +488,7 @@ namespace QuickIME
             f2.LoadSeed("你 好 嗎\n");
             f2.LoadMemoryText(memText);
             Eq("2", f2.LearnedPairs.ToString(), "由文字載入 -> 學到 2 組");
-            Eq("係", f2.Lookup("你", "")[0], "載入後排序保持：『係』仍然第一");
+            Eq("係", f2.Lookup("你")[0], "載入後排序保持：『係』仍然第一");
 
             // ---- 「記錄習慣」關掉後：唔會再學，但舊記憶仍然有效 ----
             var learnAssoc = new Assoc();
@@ -518,10 +518,10 @@ namespace QuickIME
             var keep = new Assoc();
             keep.LoadSeed("你 好 嗎\n");
             for (int i = 0; i < 5; i++) keep.Learn("你", "嗎");
-            Eq("嗎", keep.Lookup("你", "")[0], "學習期間：『嗎』排第一");
+            Eq("嗎", keep.Lookup("你")[0], "學習期間：『嗎』排第一");
             Eq("1", keep.LearnedPairs.ToString(), "已有 1 組記憶");
             // 模擬「關掉學習」：不再呼叫 Learn，但舊記憶仍然存在
-            Eq("嗎", keep.Lookup("你", "")[0], "關掉學習之後，舊記憶仍然照舊排序");
+            Eq("嗎", keep.Lookup("你")[0], "關掉學習之後，舊記憶仍然照舊排序");
             Eq("1", keep.LearnedPairs.ToString(), "關掉學習不會刪除已有的記憶");
 
             // ---- 壞檔容錯 ----
@@ -529,17 +529,17 @@ namespace QuickIME
             g2.LoadSeed("你 好\n");
             g2.LoadMemoryText("完全垃圾\n沒有分隔\n>你\n壞資料\n===　===\n");
             Check(g2.LearnedPairs == 0, "壞記憶檔 -> 安全地當冇記憶（唔會拋例外）");
-            Check(g2.Lookup("你", "").Count > 0, "壞記憶檔 -> 內建詞表仍然可用");
+            Check(g2.Lookup("你").Count > 0, "壞記憶檔 -> 內建詞表仍然可用");
 
             // ---- 清空記憶 ----
             var h2 = new Assoc();
             h2.LoadSeed("你 好 嗎\n");
             for (int i = 0; i < 9; i++) h2.Learn("你", "嗎");
-            Eq("嗎", h2.Lookup("你", "")[0], "清空前：學過的『嗎』排第一");
+            Eq("嗎", h2.Lookup("你")[0], "清空前：學過的『嗎』排第一");
             h2.ClearMemory();
             Eq("0", h2.LearnedPairs.ToString(), "清空後：已學習組合數 = 0");
-            Eq("好", h2.Lookup("你", "")[0], "清空後：返去出廠預設（『好』第一）");
-            Check(Contains(h2.Lookup("你", ""), "嗎"), "清空後：內建聯想『嗎』仍然存在");
+            Eq("好", h2.Lookup("你")[0], "清空後：返去出廠預設（『好』第一）");
+            Check(Contains(h2.Lookup("你"), "嗎"), "清空後：內建聯想『嗎』仍然存在");
 
             // ---- 聯想唔會影響速成候選次序（本專案最重要的護欄）----
             string firstHi = dict.Lookup("hi", 2)[0];

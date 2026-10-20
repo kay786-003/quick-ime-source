@@ -21,6 +21,13 @@ QuickIME.log
 settings.ini
 .QuickIME/
 
+# releases/ 只放「可下載的成品」，不應該有執行時產生的日誌
+releases/*.log
+
+# 這兩個檔案由 build.ps1 從 docs/ 複製過來（只保留 docs/ 那份，避免兩邊不同步）
+releases/使用說明.txt
+releases/候選字視窗示意圖.png
+
 # ---- 作業系統 ----
 Thumbs.db
 desktop.ini

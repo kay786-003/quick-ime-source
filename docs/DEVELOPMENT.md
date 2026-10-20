@@ -252,6 +252,180 @@ _page = np; Raise(); return true;
 
 ---
 
+## v2.4 的設計轉折：從「測試通過」到「真的不會打錯字」
+
+v2.3 的 `--selftest` 有 148 項，全部通過。
+但使用者實際用起來，**四個會直接打錯字的 bug 同時存在**：
+
+| Bug | 症狀 |
+|-----|------|
+| 連打吞字 | 打 `abo` 之後「明」整個消失 |
+| 尾頁上屏送錯字 | 翻到尾頁按 `Enter`，送出第 1 頁的字 |
+| 數字超界漏字 | 只有 2 個候選卻按 `5`，`5` 跑進文件 |
+| `z` 沒反應 | 中文模式下 `z` 被靜默吃掉 |
+
+### 為什麼 148 項測試一個都抓不到
+
+因為那些測試全部在測 **`Composer` 的方法**：
+`TypeLetter` 有沒有把字放進 `PendingText`、`PressSpace` 頁碼對不對。
+
+但 bug 出在 **`KeyboardHook` 有沒有把 `PendingText` 送出去**、
+**送出的是哪一個 `FirstCandidate`**。
+測試驗的是「引擎算得對不對」，bug 在「掛鉤有沒有照做」。
+兩者之間那條縫，就是四個 bug 的藏身處。
+
+### 解法：把掛鉤的判斷抽成純邏輯
+
+v2.4 把 `HookCallback` 拆成兩層：
+
+```
+HookCallback (Win32)          ProcessKeyDown / ProcessKeyUp (純邏輯)
+  讀 KBDLLHOOKSTRUCT    →      KeyInput { Vk, Ctrl, Alt, Win,
+  查 GetAsyncKeyState          ShiftSide, NowMs, ShiftPhysicallyDown }
+  算 Shift 側                  ↓
+  組 KeyInput            →     回傳 Pass / Consumed / CommitPending
+                               （不呼叫任何 Win32）
+```
+
+於是 `--hooktest` 可以逐個餵「使用者按了甚麼」：
+
+```csharp
+s.Letter('a'); s.Letter('b'); s.Letter('o');
+Eq("明", s.Take(), "連打 a b o -> 立刻送出「明」");
+```
+
+`s.Take()` 拿到的是**真正送出的文字**，不是 `PendingText`。
+要讓這件事成立的關鍵是 `Typist.SendSink`（見下一節）。
+
+### `Typist.SendSink`：測試不可以真的打字
+
+`--hooktest` 會走真實的送字路徑（`Flush` → `Typist.SendText` → `SendInput`）。
+若沒有接縫，跑測試就會**把中文真的打進使用者正在用的視窗**。
+
+```csharp
+public static Action<string> SendSink;   // 正式執行時一直是 null
+
+public static void SendText(string text)
+{
+    var sink = SendSink;
+    if (sink != null) { sink(text); return; }   // 測試：只記錄，不碰 Win32
+    ...SendInput...
+}
+```
+
+這也讓測試可以驗「`PendingText` 有沒有真的被送出去」——
+這正是連打 bug 的核心。
+
+### 驗證測試真的抓得到 bug
+
+修好之後，刻意把 `Flush()` 拿掉再跑一次：
+
+```
+FAIL  連打 a b o -> 立刻送出「明」（舊版會吞掉）   (expect=[明] actual=[])
+FAIL  連打 a b o f 1 -> 共送出 2 個字（舊版只送出 1 個）   (expect=[2] actual=[1])
+FAIL  第一個字是「明」   (expect=[明] actual=[伙])
+```
+
+**會失敗的測試才是測試。** 這一步不能省。
+
+### 尾頁上屏：一個 bug 的兩個出口
+
+`FirstCandidate()` 原本回傳 `_candidates[0]` —— 「整份清單第 1 個」。
+v2.3 修 `PressSpace` 時發現了這個問題（見上面「空白鍵為什麼改成循環翻頁」），
+但只修了空白鍵那一條路徑。`Enter`／標點／連打仍然走 `FirstCandidate()`。
+
+v2.4 直接把 `FirstCandidate()` 改成「當前頁第 1 個」，
+並另開 `FirstCandidateOverall()` 給測試／診斷用 ——
+**同一個錯誤概念不留兩個名字**。
+
+### 一頁 9 個，`0` 不選字
+
+`DigitIndex()` 原本把 `'0'` 映射成 index 9（第 10 個），
+但 `PageSize = 9`，所以 `0` 永遠指向不存在的格子，
+然後掉進「數字漏進文件但候選窗還開著」的壞路徑。
+
+使用者的實測結論：**微軟速成一頁就是 9 個，`1`–`9`，`0` 不選字。**
+所以 v2.4 移除 `0` 的映射，並在組字中把 `0` 吞掉（不出字、不改狀態）。
+
+> 這條已寫進 `AGENTS.md` 的「已否決的建議」：
+> 不要提議「一頁 10 個、用 `0` 選第 10 個」。
+
+### `Ctrl` + 符號鍵 = 全形標點
+
+使用者打「，。」的肌肉記憶是 **`Ctrl` + `,` / `.`**，與微軟速成一致。
+原本掛鉤見到 `Ctrl` 就 `CallNextHookEx` 直接放行，
+而 Windows 對 `Ctrl+,` 沒有預設作用 —— 所以 `，` **完全打不出來**。
+
+新增 `FullWidthPunct`（純查表，可單測）：
+
+| 按鍵 | 輸出 | 說明 |
+|------|------|------|
+| `Ctrl+,` | `，` | 最常用 |
+| `Ctrl+.` | `。` | 最常用 |
+| `Ctrl+;` | `；` | |
+| `Ctrl+'` | `：` | 用家常打「：」 |
+| `Ctrl+[` `]` | `「` `」` | |
+| `Ctrl+\` | `、` | |
+| `Ctrl+-` `=` | `－` `＝` | |
+
+**刻意不放進表的鍵**：
+
+- `/` → `?`：使用者要**半形** `?`
+- 數字、字母：不能接管
+
+組字中按 `Ctrl` + 符號鍵要先上屏候選再出標點，
+而 `Commit()` 會覆寫 `PendingText`，所以順序必須是
+`Commit(候選)` → `Flush()` → `Commit(標點)`。
+直接連續 `Commit()` 兩次會把候選字吃掉。
+
+### 掛鉤效能：為什麼日誌要惰性求值
+
+低階鍵盤掛鉤跑在系統的**輸入路徑**上。
+`LowLevelHooksTimeout`（預設 300ms）一旦逾時，Windows 會**靜默移除掛鉤** ——
+輸入法整個失效，而且沒有任何錯誤訊息。
+
+原本掛鉤裡寫 `Program.Log("hook: vk=" + vk + ...)`，
+即使 `Verbose = false` 也會先做字串串接與裝箱。改成：
+
+```csharp
+Program.Log(() => "hook: vk=" + vk + " composing=" + _composer.IsComposing);
+```
+
+`Verbose = false` 時連 lambda 都不會被呼叫。
+
+同理，`AssocChanged` → `CandidateForm.Show()`（第一次會建立視窗）
+原本在掛鉤執行緒同步跑，v2.4 改成經 `UiDispatcher` 丟回 UI 執行緒
+（`CandidateForm.BeginInvoke`），**狀態仍然同步更新**，
+只有「重畫」被搬走 —— 因為按鍵判斷不能有延遲。
+
+### DPI：候選窗為什麼會偏離插入點
+
+候選窗用 `GetGUIThreadInfo` 取 caret 座標，那是**物理像素**。
+若行程被系統當成 DPI-unaware，Windows 會把座標虛擬化，
+在 125% / 150% 縮放時窗就會偏離插入點。
+
+v2.4 加了 `src/app.manifest`（`permonitorv2` + `asInvoker`）。
+`asInvoker` 很重要：**不可以因為 manifest 而變成要求 UAC 提權**，
+否則就違背了「免管理員權限」這個專案前提。
+
+### 版本號單一來源
+
+原本版本號散在四處：`Program.Version`、`build.ps1` 的 zip 名、
+CI 的 tag、README 的連結。v2.4 之後只有 `VERSION` 一個檔：
+
+```
+VERSION  →  build.ps1  →  src/VersionInfo.cs（自動產生）
+                        →  zip 檔名 速成輸入法_vX.Y.zip
+                        →  組件版本 x.y.0.0（--version 與檔案屬性一致）
+```
+
+`src/VersionInfo.cs` 雖然提交在 repo 裡，但它是**產生物**，
+註解已寫明「請勿手動編輯」。
+
+
+
+## 字典索引：為什麼是 702 個 bucket
+
 速成只有 1–2 碼，字母 a–z：
 
 - 單碼：26 種
@@ -393,14 +567,20 @@ public bool ShouldLearn { get { return AssocEnabled && AssocLearnEnabled; } }
 ## 測試
 
 ```powershell
-# 148 項自我測試（字典 + 組字 + 翻頁 + 連打 + 切換 + 設定 + 聯想字 + 學習開關 + 選字鍵）
+# 147 項自我測試（字典 + 組字 + 翻頁 + 連打 + 切換 + 設定 + 聯想字 + 學習開關 + 選字鍵）
 .\dist\QuickIME.exe --selftest
+
+# 46 項按鍵流程重播（掛鉤層：連打／z／數字超界／尾頁 Enter／Ctrl 符號）
+.\dist\QuickIME.exe --hooktest
+
+# 打機情境（長按 Shift + WASD 不誤切換）
+.\dist\QuickIME.exe --gametest
 
 # 候選窗截圖（不需要真人操作，方便檢查 UI 改動）
 .\dist\QuickIME.exe --uishop shot.png
 ```
 
-`SelfTest.cs` 涵蓋：
+`SelfTest.cs`（引擎層）涵蓋：
 
 | 類別 | 項目 |
 |------|------|
@@ -414,9 +594,23 @@ public bool ShouldLearn { get { return AssocEnabled && AssocLearnEnabled; } }
 | 切換 | 左／右／兩邊／關閉、長按 700ms 邊界、連發不重設計時、兩邊同按 |
 | Ctrl+空白 | 上升緣判定、連發、開關攔截 |
 | 設定 | ini 讀寫往返、人手改大小寫／舊數字格式／亂值的容錯 |
-| 聯想字 | 中文判定、詞表解析、學習排序、前綴收窄、持久化往返、壞檔容錯、清空記憶、不影響速成次序 |
+| 聯想字 | 中文判定、詞表解析、學習排序、持久化往返、壞檔容錯、清空記憶、不影響速成次序 |
 | 學習開關 | 預設值、ini 往返、兩個開關互相獨立、舊設定檔相容、關掉後舊記憶保留 |
 | 選字鍵 | Shift+數字判定、超出範圍、唔按 Shift 打數字、關掉後回復舊行為、舊設定檔相容 |
+
+`HookTest.cs`（掛鉤層）涵蓋 —— **這一層才是 v2.4 四個 bug 的守門人**：
+
+| 類別 | 項目 |
+|------|------|
+| 連打 | `abo` 立刻送出「明」、`abof1` 送出兩個字、Reset 後重新組字 |
+| `z` | 空碼按 `z` 交回系統、組字中按 `z` 不改組字碼、有效字母仍被消耗 |
+| 數字超界 | 超出當頁被吞（不出字、不改狀態）、`0` 不選字、1–9 正常選字 |
+| 尾頁 Enter | `FirstCandidate()` = 當前頁第 1 個、尾頁／中途頁 Enter 都送對字 |
+| Ctrl 符號 | 9 個全形標點、`?` 不接管、不含數字字母、組字中先上屏再出標點 |
+| 空白護欄 | 連按 12 次全程不上屏、尾頁繞返第 1 頁 |
+
+> 新增測試後**一定要驗證它會失敗**：把修正拿掉，確認對應的測試真的變成 FAIL。
+> 不會失敗的測試等於沒有測試。
 
 
 ---

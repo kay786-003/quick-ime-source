@@ -44,6 +44,15 @@ namespace QuickIME
         public const int VK_RMENU = 0xA5;
         public const int VK_OEM_MINUS = 0xBD;
         public const int VK_OEM_PLUS = 0xBB;
+        public const int VK_OEM_1 = 0xBA;      // ; :
+        public const int VK_OEM_2 = 0xBF;      // / ?
+        public const int VK_OEM_3 = 0xC0;      // ` ~
+        public const int VK_OEM_4 = 0xDB;      // [ {
+        public const int VK_OEM_5 = 0xDC;      // \ |
+        public const int VK_OEM_6 = 0xDD;      // ] }
+        public const int VK_OEM_7 = 0xDE;      // ' "
+        public const int VK_OEM_COMMA = 0xBC;  // , <
+        public const int VK_OEM_PERIOD = 0xBE; // . >
 
         [StructLayout(LayoutKind.Sequential)]
         public struct KBDLLHOOKSTRUCT
@@ -157,6 +166,58 @@ namespace QuickIME
         public static extern ulong GetTickCount64();
     }
 
+    /// <summary>
+    /// Ctrl + 符號鍵 → 全形標點。
+    ///
+    /// 【用家習慣】用家打「，。」的肌肉記憶就是按住 Ctrl 再按那個符號鍵，
+    /// 與微軟速成一致。而 <c>? !</c> 保持半形，所以那兩個鍵**不在**這張表裡。
+    /// 詳見 AGENTS.md「符號」。
+    ///
+    /// 表用 VK 而不是掃描碼，所以對 US / 香港常用鍵盤都適用；
+    /// 若用家的鍵盤排列不同導致某個鍵對不上，只要改這一個字典就夠。
+    /// </summary>
+    internal static class FullWidthPunct
+    {
+        /// <summary>
+        /// 按鍵 → 全形符號。<c>,</c>→<c>，</c>、<c>.</c>→<c>。</c> 是最常用的兩個。
+        ///
+        /// 分做「一級」與「二級」兩張表，原因是同一個鍵要出兩個不同符號：
+        /// 用家的鍵盤上 <c>;</c> 與 <c>:</c> 是同一個鍵，用 Shift 區分。
+        /// 一級 = 不按 Shift，二級 = 按住 Shift。
+        /// </summary>
+        private static readonly Dictionary<int, string> MapPlain = new Dictionary<int, string>
+        {
+            { Native.VK_OEM_COMMA,  "，" },   // ,
+            { Native.VK_OEM_PERIOD, "。" },   // .
+            { Native.VK_OEM_1,      "；" },   // ;
+            { Native.VK_OEM_7,      "：" },   // '   （用家常打「：」）
+            { Native.VK_OEM_4,      "「" },   // [
+            { Native.VK_OEM_6,      "」" },   // ]
+            { Native.VK_OEM_MINUS,  "－" },   // -
+            { Native.VK_OEM_PLUS,   "＝" },   // =
+            { Native.VK_OEM_5,      "、" },   // \
+        };
+
+        /// <summary>按住 Shift 時的版本（<c>Ctrl+Shift+;</c> → <c>：</c>）。</summary>
+        private static readonly Dictionary<int, string> MapShift = new Dictionary<int, string>
+        {
+            { Native.VK_OEM_1,      "：" },   // Ctrl+Shift+;  → ：
+            { Native.VK_OEM_7,      "「" },   // Ctrl+Shift+'  → 「
+        };
+
+        /// <summary>
+        /// 查這對 (vk, shift) 有沒有全形對應。沒有就回傳 null（交回系統）。
+        /// 刻意<b>不含</b> <c>/ ?</c>：用家要半形的 <c>?</c>。也不含數字與字母。
+        /// </summary>
+        public static string Lookup(uint vk, bool shift)
+        {
+            string s;
+            if (shift && MapShift.TryGetValue((int)vk, out s)) return s;
+            if (MapPlain.TryGetValue((int)vk, out s)) return s;
+            return null;
+        }
+    }
+
     /// <summary>送出 Unicode 文字到前景視窗（不經剪貼簿）。</summary>
     internal static class Typist
     {
@@ -166,9 +227,23 @@ namespace QuickIME
         /// </summary>
         public static readonly IntPtr Magic = (IntPtr)0x514B494D; // 'QKIM'
 
+        /// <summary>
+        /// 測試用注入點（seam）：設定之後 <see cref="SendText"/> / <see cref="SendBackspace"/>
+        /// 只會呼叫這個 delegate，**完全不碰 Win32**。
+        ///
+        /// 為什麼需要：--hooktest 要重播真實按鍵流程，而那些流程最後會走 SendText。
+        /// 若沒有這個接縫，測試就會把中文真的打進使用者正在用的視窗（或直接失控）。
+        /// 正式執行時這個值一直是 null。
+        /// </summary>
+        public static Action<string> SendSink;
+
         public static void SendText(string text)
         {
             if (string.IsNullOrEmpty(text)) return;
+
+            var sink = SendSink;
+            if (sink != null) { sink(text); return; }
+
             var list = new List<Native.INPUT>(text.Length * 2);
             foreach (char ch in text)
             {
@@ -225,7 +300,30 @@ namespace QuickIME
     }
 
     /// <summary>
+    /// 一個按鍵事件的「純輸入」：全部修飾鍵狀態都由呼叫者算好，
+    /// 所以 <see cref="KeyboardHook.ProcessKeyDown"/> 完全唔碰 Win32，可以離線重播。
+    /// 見 --hooktest。
+    /// </summary>
+    internal struct KeyInput
+    {
+        public uint Vk;
+        public bool Ctrl;
+        public bool Alt;
+        public bool Win;
+        /// <summary>系統層面 Shift 實際是否按住（只用來校正漏收 keyup）。</summary>
+        public bool ShiftPhysicallyDown;
+        /// <summary>ToggleGate.LeftSide / RightSide / NoSide。</summary>
+        public int ShiftSide;
+        public int NowMs;
+    }
+
+    /// <summary>
     /// 鍵盤掛鉤：攔截 a-z / 空白 / 數字 / 翻頁 / 退格，交由 Composer 組字。
+    ///
+    /// 【重要】所有判斷都在 <see cref="ProcessKeyDown"/> / <see cref="ProcessKeyUp"/>，
+    /// 它們只依賴傳入的 <see cref="KeyInput"/>，不呼叫任何 Win32。
+    /// <see cref="HookCallback"/> 只負責「讀 Win32 → 餵事件 → 執行結果」，
+    /// 所以 --hooktest 可以完整重播真實按鍵序列（連打／z／數字超界／尾頁 Enter）。
     /// </summary>
     internal sealed class KeyboardHook : IDisposable
     {
@@ -315,11 +413,24 @@ namespace QuickIME
             return '\0';
         }
 
-        private int DigitIndex(uint vk)
+        /// <summary>
+        /// 數字鍵 → 當頁第幾個候選（0-based，只有 0..8）。
+        ///
+        /// 【硬規則】微軟速成一頁 9 個、用 1-9 選，<c>0</c> 不選字（用家實測）。
+        /// 舊版把 <c>0</c> 映射成第 10 個（index 9），但一頁只有 9 格，
+        /// 所以 <c>0</c> 永遠指向不存在的格子 —— 直接落空。
+        /// （見 AGENTS.md「已否決的建議」：不要改成一頁 10 個。）
+        /// </summary>
+        internal static int DigitIndex(uint vk)
         {
             if (vk >= '1' && vk <= '9') return (int)(vk - '1');
-            if (vk >= '0' && vk <= '9') return 9;    // '0' -> 第 10 個
             return -1;
+        }
+
+        /// <summary>係唔係任何數字鍵（包括 '0'）—— 用來分辨「超界選字」同「根本唔係數字」。</summary>
+        internal static bool IsDigitKey(uint vk)
+        {
+            return vk >= '0' && vk <= '9';
         }
 
         /// <summary>
@@ -356,7 +467,6 @@ namespace QuickIME
             if (msg == Native.WM_KEYUP || msg == Native.WM_SYSKEYUP)
             {
                 var upInfo = (Native.KBDLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(Native.KBDLLHOOKSTRUCT));
-                uint upVk = upInfo.vkCode;
 
                 // 自己注入的按鍵一律放行
                 if (upInfo.dwExtraInfo == Typist.Magic)
@@ -365,21 +475,15 @@ namespace QuickIME
                 if (!Enabled)
                     return Native.CallNextHookEx(_hook, nCode, wParam, lParam);
 
-                // Ctrl+空白：按住不放 / 連發都唔會重複觸發，只認「按完」這一下
-                if (upVk == Native.VK_SPACE)
-                    _gate.CtrlSpace(false);
-
-                // ---- Shift 單按放開 = 中英切換 ----
-                // 注意：一定要放行這個 keyup，否則 Shift+字母（打大寫）會卡住 Shift 狀態。
-                int side = ShiftSideOf(upVk);
-                if (side != ToggleGate.NoSide && _gate.ShiftUp(side, NowMs()))
+                var up = new KeyInput
                 {
-                    ChineseMode = !ChineseMode;
-                    if (!ChineseMode) _composer.Reset();
-                    RaiseModeChanged();
-                    Program.Log("shift(" + (side == ToggleGate.LeftSide ? "L" : "R") +
-                                ") tap -> toggle cn=" + ChineseMode);
-                }
+                    Vk = upInfo.vkCode,
+                    ShiftSide = ShiftSideOf(upInfo.vkCode),
+                    NowMs = NowMs(),
+                    ShiftPhysicallyDown = ShiftActuallyDown()
+                };
+                ProcessKeyUp(up);
+                // 注意：一定要放行 keyup，否則 Shift+字母（打大寫）會卡住 Shift 狀態。
                 return Native.CallNextHookEx(_hook, nCode, wParam, lParam);
             }
 
@@ -391,15 +495,52 @@ namespace QuickIME
             // 自己注入的按鍵（上屏文字）一律放行，否則會無限回圈。
             if (info.dwExtraInfo == Typist.Magic)
             {
-                Program.Log("hook: injected vk=" + info.vkCode + " -> pass");
+                // 掛鉤對延遲極敏感（LowLevelHooksTimeout 預設 300ms，逾時系統會靜默移除掛鉤），
+                // 所以日誌一律惰性求值：Verbose=false 時連字串都不會組。
+                Program.Log(() => "hook: injected vk=" + info.vkCode + " -> pass");
                 return Native.CallNextHookEx(_hook, nCode, wParam, lParam);
             }
 
-            uint vk = info.vkCode;
+            var input = new KeyInput
+            {
+                Vk = info.vkCode,
+                Ctrl = IsDown(Native.VK_CONTROL) || IsDown(Native.VK_LCONTROL) || IsDown(Native.VK_RCONTROL),
+                Alt = IsDown(Native.VK_MENU) || IsDown(Native.VK_LMENU) || IsDown(Native.VK_RMENU),
+                Win = IsDown(0x5B) || IsDown(0x5C),
+                ShiftSide = ShiftSideOf(info.vkCode),
+                NowMs = NowMs(),
+                ShiftPhysicallyDown = ShiftActuallyDown()
+            };
 
-            bool ctrl = IsDown(Native.VK_CONTROL) || IsDown(Native.VK_LCONTROL) || IsDown(Native.VK_RCONTROL);
-            bool alt = IsDown(Native.VK_MENU) || IsDown(Native.VK_LMENU) || IsDown(Native.VK_RMENU);
-            bool win = IsDown(0x5B) || IsDown(0x5C);
+            int result = ProcessKeyDown(input);
+
+            if (result == HookResult.CommitPending) Flush();
+
+            return result == HookResult.Consumed
+                ? (IntPtr)1
+                : Native.CallNextHookEx(_hook, nCode, wParam, lParam);
+        }
+
+        /// <summary>ProcessKeyDown 的回傳值。</summary>
+        internal static class HookResult
+        {
+            /// <summary>交回系統。</summary>
+            public const int Pass = 0;
+            /// <summary>已消耗，不要交回系統。</summary>
+            public const int Consumed = 1;
+            /// <summary>已消耗，而且要立刻把 Composer 的 PendingText 送出去。</summary>
+            public const int CommitPending = 2;
+        }
+
+        /// <summary>
+        /// 【純邏輯】處理一次 keydown。
+        ///
+        /// 完全不碰 Win32：所有修飾鍵、Shift 側、時間都由 <see cref="KeyInput"/> 傳入。
+        /// 這樣 --hooktest 才可以重播真實按鍵序列，覆蓋「連打／z／數字超界／尾頁 Enter」。
+        /// </summary>
+        internal int ProcessKeyDown(KeyInput k)
+        {
+            uint vk = k.Vk;
 
             // ---- Ctrl+空白 ----
             // 微軟速成會用它在「全形／半形符號」之間切換，打機緊張時很容易誤按。
@@ -407,12 +548,12 @@ namespace QuickIME
             // 注意：一定要真係有按 Ctrl 才算，否則普通空白鍵會被吞掉。
             if (vk == Native.VK_SPACE)
             {
-                if (ctrl)
+                if (k.Ctrl)
                 {
                     if (_gate.CtrlSpace(true) || _gate.CtrlSpaceHeld)
                     {
                         Program.Log("hook: ctrl+space blocked");
-                        return (IntPtr)1;
+                        return HookResult.Consumed;
                     }
                 }
                 _gate.CtrlSpace(false);
@@ -423,16 +564,15 @@ namespace QuickIME
             }
 
             if (!Enabled)
-                return Native.CallNextHookEx(_hook, nCode, wParam, lParam);
+                return HookResult.Pass;
 
-            Program.Log("hook: vk=" + vk + " composing=" + _composer.IsComposing + " cn=" + ChineseMode);
+            Program.Log(() => "hook: vk=" + vk + " composing=" + _composer.IsComposing + " cn=" + ChineseMode);
 
             // ---- Shift 按下：記錄時間，等放開時判斷係「單按」定「長按」----
-            int shiftSide = ShiftSideOf(vk);
-            if (shiftSide != ToggleGate.NoSide)
+            if (k.ShiftSide != ToggleGate.NoSide)
             {
-                _gate.ShiftDown(shiftSide, NowMs());
-                return Native.CallNextHookEx(_hook, nCode, wParam, lParam);
+                _gate.ShiftDown(k.ShiftSide, k.NowMs);
+                return HookResult.Pass;
             }
 
             // 任何其他鍵按下 → 呢次 Shift 就唔再算「單按」
@@ -440,17 +580,43 @@ namespace QuickIME
 
             // 安全網：若系統實際已經冇按住 Shift（掛鉤漏收 keyup），
             // 就校正狀態，否則會永遠當「長按 Shift」而完全打不到中文字。
-            if (_gate.IsShiftHeld && !ShiftActuallyDown())
+            if (_gate.IsShiftHeld && !k.ShiftPhysicallyDown)
             {
                 _gate.ResetShift();
                 Program.Log("hook: shift state desync -> reset");
+            }
+
+            // ---- Ctrl + 符號鍵 → 全形標點 ----
+            // 用家習慣：打「，。」就是按住 Ctrl 再按 ,  . （與微軟速成一致）。
+            // 必須放在「組字中」之前：組字時按 Ctrl+, 也應該先上屏首選、再出「，」。
+            // 必須放在「有 Ctrl 就放行」之前，否則 Ctrl+, 會直接漏給系統（等於打不出來）。
+            // 刻意不接管 ? / ! —— 用家要半形。
+            if (k.Ctrl && !k.Alt && !k.Win)
+            {
+                bool shiftHeld = _gate.IsShiftHeld;
+                string punct = FullWidthPunct.Lookup(vk, shiftHeld);
+                if (punct != null)
+                {
+                    // 若正在組字，先上屏首選（與 Enter／標點的慣例一致）。
+                    // 注意：不能用 Commit() 兩次 —— Commit 會覆寫 PendingText，
+                    // 所以要先 Flush 掉首選，再 Commit 標點。
+                    if (_composer.IsComposing)
+                    {
+                        string first = _composer.FirstCandidate();
+                        if (!string.IsNullOrEmpty(first)) { _composer.Commit(first); Flush(); }
+                        else _composer.Cancel();
+                    }
+                    _composer.Commit(punct);
+                    return HookResult.CommitPending;
+                }
             }
 
             // ---- 聯想字：Shift + 數字鍵 = 選聯想字（Windows 速成習慣）----
             // 微軟速成的聯想字要按住 Shift 再按 1-9 才選得到，
             // 所以這裡一定要放在「長按 Shift 期間唔組字」之前處理，
             // 否則 Shift 會被當成長按而直接放行，聯想字永遠選不到。
-            if (_assocActive && !ctrl && !alt && !win)
+            // 但組字中永遠優先處理組字，所以加 !IsComposing。
+            if (_assocActive && !_composer.IsComposing && !k.Ctrl && !k.Alt && !k.Win)
             {
                 int digitIdx = DigitIndex(vk);
                 var act = DecideAssocDigit(_gate.IsShiftHeld, AssocShiftDigits,
@@ -458,14 +624,14 @@ namespace QuickIME
                 if (act == AssocDigitAction.Select)
                 {
                     CommitAssoc(_assocItems[digitIdx]);
-                    return (IntPtr)1;
+                    return HookResult.Consumed;
                 }
                 if (act == AssocDigitAction.CloseAndPass)
                 {
                     // 超出聯想字範圍（例如只有 5 個卻按了 7）→ 收起聯想窗並放行，
                     // 用家可能真的想打 Shift+7 或普通數字。
                     EndAssoc();
-                    return Native.CallNextHookEx(_hook, nCode, wParam, lParam);
+                    return HookResult.Pass;
                 }
                 // PassAsNumber（Shift+數字 已開但冇按 Shift）→ 落到下面收起聯想窗後
                 // 繼續當普通數字處理，唔會吞掉用家的數字。
@@ -476,55 +642,68 @@ namespace QuickIME
             // （Shift 長期按住亦唔會切換中英，見 ToggleGate 的長按判定。）
             if (_gate.IsShiftHeld)
             {
-                if (!ctrl && !alt && !win && _composer.IsComposing)
+                if (!k.Ctrl && !k.Alt && !k.Win && _composer.IsComposing)
                 {
                     string first = _composer.FirstCandidate();
                     if (!string.IsNullOrEmpty(first)) { _composer.Commit(first); Flush(); }
                     else _composer.Cancel();
                 }
-                return Native.CallNextHookEx(_hook, nCode, wParam, lParam);
+                return HookResult.Pass;
             }
 
             // 有 Ctrl / Alt / Win 鍵按著 -> 交回系統（保留快捷鍵）
-            if (ctrl || alt || win)
-                return Native.CallNextHookEx(_hook, nCode, wParam, lParam);
+            if (k.Ctrl || k.Alt || k.Win)
+                return HookResult.Pass;
 
             // ---- 組字中 ----
             if (_composer.IsComposing)
             {
-                // 數字選字
+                // 數字選字（只有 1-9；'0' 不選字 —— 見 AGENTS.md）
                 int di = DigitIndex(vk);
                 if (di >= 0)
                 {
                     int onPage = _composer.CurrentPage().Count;
-                    if (di < onPage) { _composer.SelectOnPage(di); Flush(); return (IntPtr)1; }
+                    if (di < onPage)
+                    {
+                        _composer.SelectOnPage(di);
+                        return HookResult.CommitPending;
+                    }
+
+                    // 超出當頁範圍（例如 2 個候選卻按了 5）：
+                    // 舊版這裡會「數字漏進文件、候選窗又仍然開著」。
+                    // 現在一律吞掉、不出字、不改狀態 —— 打字時最不意外。
+                    return HookResult.Consumed;
                 }
+
+                // '0' 在組字中沒有作用（不選字），吞掉避免漏進文件
+                if (IsDigitKey(vk))
+                    return HookResult.Consumed;
 
                 // 空白：微軟速成習慣 → 下一頁；到尾頁再按 = 繞返第 1 頁（循環，
                 // 永遠不會偷偷上屏）。只有單頁（冇頁可翻）時才直接上屏第一個。
-                if (vk == Native.VK_SPACE) { _composer.PressSpace(); Flush(); return (IntPtr)1; }
+                if (vk == Native.VK_SPACE) { _composer.PressSpace(); return HookResult.CommitPending; }
 
                 // 翻頁（PageDown/PageUp 仍然可用，方便用家）
-                if (vk == Native.VK_NEXT) { _composer.PageMove(1); return (IntPtr)1; }
-                if (vk == Native.VK_PRIOR) { _composer.PageMove(-1); return (IntPtr)1; }
-                if (vk == Native.VK_OEM_MINUS) { _composer.PageMove(-1); return (IntPtr)1; }
-                if (vk == Native.VK_OEM_PLUS) { _composer.PageMove(1); return (IntPtr)1; }
+                if (vk == Native.VK_NEXT) { _composer.PageMove(1); return HookResult.Consumed; }
+                if (vk == Native.VK_PRIOR) { _composer.PageMove(-1); return HookResult.Consumed; }
+                if (vk == Native.VK_OEM_MINUS) { _composer.PageMove(-1); return HookResult.Consumed; }
+                if (vk == Native.VK_OEM_PLUS) { _composer.PageMove(1); return HookResult.Consumed; }
 
                 // 退格
-                if (vk == Native.VK_BACK) { _composer.Backspace(); return (IntPtr)1; }
+                if (vk == Native.VK_BACK) { _composer.Backspace(); return HookResult.Consumed; }
 
                 // Esc 取消
-                if (vk == Native.VK_ESCAPE) { _composer.Cancel(); return (IntPtr)1; }
+                if (vk == Native.VK_ESCAPE) { _composer.Cancel(); return HookResult.Consumed; }
 
-                // 標點 / Enter 等：先上屏首選，再讓原本的鍵生效
-                bool letter = ToLowerLetter(vk) != '\0';
-                if (!letter)
+                // 標點 / Enter 等：先上屏首選（當前頁的第 1 個），再讓原本的鍵生效
+                char lc = ToLowerLetter(vk);
+                if (lc == '\0')
                 {
                     string first = _composer.FirstCandidate();
                     if (!string.IsNullOrEmpty(first)) { _composer.Commit(first); Flush(); }
                     else _composer.Cancel();
                     // 不消耗，交回系統（例如 Enter 換行、標點符號）
-                    return Native.CallNextHookEx(_hook, nCode, wParam, lParam);
+                    return HookResult.Pass;
                 }
             }
 
@@ -532,23 +711,53 @@ namespace QuickIME
             if (_assocActive)
             {
                 if (HandleAssocKey(vk))
-                    return (IntPtr)1;
+                    return HookResult.Consumed;
                 // 落到這裡代表呢個鍵唔關聯想字事 → 收起聯想窗，繼續正常處理
                 EndAssoc();
             }
 
             // ---- 中文模式 ----
             if (!ChineseMode)
-                return Native.CallNextHookEx(_hook, nCode, wParam, lParam);
+                return HookResult.Pass;
 
             char lower = ToLowerLetter(vk);
             if (lower != '\0')
             {
-                _composer.TypeLetter(lower);
-                return (IntPtr)1;
+                // 【重要】TypeLetter 回傳 false = 這個字母不是有效碼（例如 z，或第二碼 z）。
+                // 舊版不理回傳值、一律消耗 → z 被靜默吞掉。
+                // 現在交回系統，讓 z 照常打出來。
+                if (!_composer.TypeLetter(lower))
+                    return HookResult.Pass;
+
+                // 【重要】連打時 TypeLetter 內部會 Commit 上一個首選字，
+                // 舊版沒有 Flush，那個字會留在 PendingText 被下一次 Commit 覆蓋
+                // （打 abo 之後「明」整個消失）。所以這裡一定要把待送文字送出去。
+                Flush();
+                return HookResult.Consumed;
             }
 
-            return Native.CallNextHookEx(_hook, nCode, wParam, lParam);
+            return HookResult.Pass;
+        }
+
+        /// <summary>
+        /// 【純邏輯】處理一次 keyup。
+        /// 目前只有「Shift 單按放開 = 切換中英」與「Ctrl+空白 放開」會用到。
+        /// </summary>
+        internal void ProcessKeyUp(KeyInput k)
+        {
+            // Ctrl+空白：按住不放 / 連發都唔會重複觸發，只認「按完」這一下
+            if (k.Vk == Native.VK_SPACE)
+                _gate.CtrlSpace(false);
+
+            // ---- Shift 單按放開 = 中英切換 ----
+            if (k.ShiftSide != ToggleGate.NoSide && _gate.ShiftUp(k.ShiftSide, k.NowMs))
+            {
+                ChineseMode = !ChineseMode;
+                if (!ChineseMode) _composer.Reset();
+                RaiseModeChanged();
+                Program.Log("shift(" + (k.ShiftSide == ToggleGate.LeftSide ? "L" : "R") +
+                            ") tap -> toggle cn=" + ChineseMode);
+            }
         }
 
         // ------------------------------------------------------------------
@@ -562,9 +771,6 @@ namespace QuickIME
 
         /// <summary>聯想字是否顯示中。</summary>
         public bool AssocActive { get { return _assocActive; } }
-
-        /// <summary>目前已打的聯想前綴（顯示在視窗標題用）。</summary>
-        public string AssocPending { get { return _assocPending; } }
 
         /// <summary>聯想字設定（由 Program 提供）。false = 完全不出聯想窗。</summary>
         public bool AssocEnabled { get; set; }
@@ -590,9 +796,6 @@ namespace QuickIME
         /// </summary>
         public bool AssocShiftDigits { get; set; }
 
-        /// <summary>聯想前綴上限（打太多字就自動放棄，避免無限長）。</summary>
-        private const int MaxAssocPending = 3;
-
         /// <summary>目前顯示中的聯想字（由 UI 回報，掛鉤唔直接持有 Form）。</summary>
         public IList<string> AssocItems
         {
@@ -604,14 +807,7 @@ namespace QuickIME
         public event EventHandler AssocChanged;
 
         private bool _assocActive;
-        private string _assocPending = "";
         private IList<string> _assocItems = new List<string>();
-
-        private void RaiseAssocChanged()
-        {
-            var h = AssocChanged;
-            if (h != null) h(this, EventArgs.Empty);
-        }
 
         /// <summary>
         /// 現在是否應該記錄習慣：聯想字要開著，而且「記錄習慣」開關亦要開。
@@ -653,8 +849,7 @@ namespace QuickIME
             string prev = ContextPrev;
             if (string.IsNullOrEmpty(prev)) { EndAssoc(); return; }
 
-            _assocPending = "";
-            _assocItems = _assoc.Lookup(prev, "");
+            _assocItems = _assoc.Lookup(prev);
             _assocActive = _assocItems.Count > 0;
             RaiseAssocChanged();
         }
@@ -663,7 +858,6 @@ namespace QuickIME
         {
             bool was = _assocActive;
             _assocActive = false;
-            _assocPending = "";
             _assocItems = new List<string>();
             if (was) RaiseAssocChanged();
         }
@@ -690,7 +884,7 @@ namespace QuickIME
             int di = DigitIndex(vk);
             if (di >= 0)
             {
-                var act = DecideAssocDigit(_gate.IsShiftHeld, AssocShiftDigits, di, _assocItems.Count);
+                var act = DecideAssocDigit(_gate.IsShiftHeld, AssocShiftDigits, di, AssocSelectableCount);
                 if (act == AssocDigitAction.Select)
                 {
                     CommitAssoc(_assocItems[di]);
@@ -704,33 +898,30 @@ namespace QuickIME
             if (vk == Native.VK_SPACE || vk == Native.VK_ESCAPE)
             {
                 EndAssoc();
-                RaiseAssocChanged();
                 return true;
             }
 
-            // 字母：當成「繼續打聯想字」的前綴（像拼音輸入法一樣越打越窄）
-            char lower = ToLowerLetter(vk);
-            if (lower != '\0' && AssocEnabled && _assoc != null)
-            {
-                string next = _assocPending + lower;
-                if (next.Length > MaxAssocPending) { EndAssoc(); RaiseAssocChanged(); return false; }
-
-                var items = _assoc.Lookup(ContextPrev, next);
-                if (items.Count > 0)
-                {
-                    _assocPending = next;
-                    _assocItems = items;
-                    RaiseAssocChanged();
-                    return true;
-                }
-
-                // 冇字接得上 → 當普通速成碼處理（收起聯想窗）
-                EndAssoc();
-                RaiseAssocChanged();
-                return false;
-            }
-
+            // 字母：收起聯想窗，交給速成照常組字。
+            //
+            // 【已移除】舊版這裡有一段「聯想前綴收窄」：把字母接到 _assocPending，
+            // 再呼叫 Assoc.Lookup(prev, next)。但 MatchesPrefix 用
+            // 「中文字.StartsWith("a-z")」去比對，永遠是 false ——
+            // 所以那段程式碼從上線第一天起就從未生效，只是死碼。
+            // 現在明碼寫出真正的行為：收起聯想窗 → 返回 false → 由呼叫者繼續走速成。
             return false;
+        }
+
+        /// <summary>
+        /// 聯想窗「當頁」實際可選的數量。
+        ///
+        /// 為什麼要有這個：<c>_assocItems</c> 是引擎回傳的全部（上限 9），
+        /// 而畫面一頁只顯示 <see cref="CandidateForm.AssocPerPage"/> 個。
+        /// 選字判斷必須用「畫面看得到的數量」，否則兩邊的「頁」概念不一致
+        /// （見 AGENTS.md：一頁 9 個）。
+        /// </summary>
+        private int AssocSelectableCount
+        {
+            get { return Math.Min(_assocItems.Count, CandidateForm.AssocPerPage); }
         }
 
         /// <summary>選了一個聯想字：學起來、送出、再把新字當成新的上下文。</summary>
@@ -746,7 +937,6 @@ namespace QuickIME
             }
 
             EndAssoc();
-            RaiseAssocChanged();
             Typist.SendText(ch);
             ContextPrev = ch;
             ShowAssocFor();
@@ -779,7 +969,6 @@ namespace QuickIME
             ContextPrev = "";
             _assocItems = new List<string>();
             _assocActive = false;
-            _assocPending = "";
 
             _saveTimer = new System.Windows.Forms.Timer();
             _saveTimer.Interval = 4000;
@@ -815,6 +1004,36 @@ namespace QuickIME
             _composer.ClearPending();
             Typist.SendText(text);
             NoteCommitted(text);
+        }
+
+        /// <summary>
+        /// 把「聯想窗要重畫」這件事丟回 UI 執行緒。
+        ///
+        /// 為什麼要做：掛鉤執行緒是系統的輸入路徑，而 <c>RaiseAssocChanged</c> 的
+        /// 訂閱者會呼叫 <c>CandidateForm.ShowAssoc()</c> → <c>Show()</c>，
+        /// 第一次顯示時要建立視窗（CreateWindowEx + 載入字型）。
+        /// 這些全部在掛鉤執行緒同步跑的話，打字會卡，嚴重時超過
+        /// LowLevelHooksTimeout（預設 300ms）→ 系統會**靜默移除掛鉤**，
+        /// 輸入法整個失效而且沒有任何錯誤訊息。
+        ///
+        /// 注意：這裡只搬「重畫」，狀態（_assocActive / _assocItems）仍在掛鉤執行緒
+        /// 同步更新，因為按鍵判斷要靠它，不可以有延遲。
+        /// </summary>
+        public Action<Action> UiDispatcher { get; set; }
+
+        private void RaiseAssocChanged()
+        {
+            var h = AssocChanged;
+            if (h == null) return;
+
+            var dispatch = UiDispatcher;
+            if (dispatch == null)
+            {
+                h(this, EventArgs.Empty);   // 測試 / 無 UI 環境：直接同步
+                return;
+            }
+            try { dispatch(delegate { h(this, EventArgs.Empty); }); }
+            catch { /* UI 已關閉，忽略 */ }
         }
 
         public void RaiseModeChanged()

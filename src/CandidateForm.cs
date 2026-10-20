@@ -40,8 +40,11 @@ namespace QuickIME
         private const int PadX = 7;
         private const int PadY = 3;
 
-        /// <summary>聯想字最多顯示幾個（與 Assoc.MaxPerChar 無關，純粹係畫面闊度）。</summary>
-        public const int AssocPerPage = 9;
+        /// <summary>
+        /// 聯想字最多顯示幾個。
+        /// 【硬規則】跟速成一樣：一頁 9 個、用 1-9 選（見 AGENTS.md）。
+        /// </summary>
+        public const int AssocPerPage = Composer.CandidatesPerPage;
 
         private Composer _composer;
         private readonly Font _fontChar;
@@ -51,7 +54,6 @@ namespace QuickIME
         // ---- 聯想字狀態（由 KeyboardHook 餵入）----
         private CandidateMode _mode = CandidateMode.Compose;
         private string _assocPrev;                 // 上一個上屏的字
-        private string _assocPending = "";         // 已打的聯想前綴（用括號顯示）
         private IList<string> _assocItems = new List<string>();
 
         public CandidateForm()
@@ -116,11 +118,10 @@ namespace QuickIME
         //  聯想字 API（由 KeyboardHook 使用）
         // ------------------------------------------------------------------
         /// <summary>顯示聯想字。<paramref name="prev"/> = 上一個上屏的字。</summary>
-        public void ShowAssoc(string prev, string pending, IList<string> items)
+        public void ShowAssoc(string prev, IList<string> items)
         {
             _mode = CandidateMode.Associate;
             _assocPrev = prev;
-            _assocPending = pending ?? "";
             _assocItems = items ?? new List<string>();
             Render();
         }
@@ -145,7 +146,6 @@ namespace QuickIME
         {
             _mode = CandidateMode.Compose;
             _assocPrev = null;
-            _assocPending = "";
             _assocItems = new List<string>();
         }
 
@@ -387,10 +387,8 @@ namespace QuickIME
             int count = Math.Min(_assocItems.Count, AssocPerPage);
             if (count == 0) return;
 
-            // 標題：「聯想　你（好）」
+            // 標題：「聯想　你」
             string title = "聯想　" + (_assocPrev ?? "");
-            if (!string.IsNullOrEmpty(_assocPending))
-                title += "（" + _assocPending + "）";
             using (var b = new SolidBrush(CodeColor))
                 g.DrawString(title, _fontSmall, b, PadX + 1, PadY + 3);
 

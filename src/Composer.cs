@@ -24,6 +24,12 @@ namespace QuickIME
 
         private List<string> _candidates = new List<string>();
         private int _page;          // 目前候選頁（0-based）
+
+        /// <summary>
+        /// 一頁顯示幾個候選。
+        /// 【硬規則】微軟速成一頁 9 個、用 1-9 選，`0` 不選字（使用者實測確認）。
+        /// 不要把這裡改成 10 —— 見 AGENTS.md「已否決的建議」。
+        /// </summary>
         private const int PageSize = 9;
 
         /// <summary>最近一次 Commit 要送出的文字。</summary>
@@ -83,8 +89,23 @@ namespace QuickIME
             return page;
         }
 
-        /// <summary>目前頁第一個候選字（空白鍵直接上屏用）。</summary>
+        /// <summary>
+        /// 目前頁的第一個候選字（空白鍵單頁上屏 / Enter / 標點 / 連打用）。
+        ///
+        /// 【重要】這裡一定要用「當前頁」的第 1 個，不是整份清單的第 1 個。
+        /// 舊版回傳 <c>_candidates[0]</c>，結果在尾頁按 Enter 會送出第 1 頁的字 ——
+        /// 畫面顯示「笂」卻打出「凡」，是會直接打錯字的那種 bug
+        /// （與 v2.3 修過的 PressSpace 同一個錯誤，當時只修了空白鍵那條路徑）。
+        /// </summary>
         public string FirstCandidate()
+        {
+            int start = _page * PageSize;
+            if (start < 0 || start >= _candidates.Count) return null;
+            return _candidates[start];
+        }
+
+        /// <summary>整份候選清單的第 1 個（只有測試 / 診斷會用，不要拿去上屏）。</summary>
+        public string FirstCandidateOverall()
         {
             return _candidates.Count > 0 ? _candidates[0] : null;
         }

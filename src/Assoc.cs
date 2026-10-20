@@ -236,11 +236,9 @@ namespace QuickIME
         /// 取得聯想字清單（已排序、已去重、已限量）。
         /// </summary>
         /// <param name="prev">上一個上屏的字（可以係空 = 開頭）。</param>
-        /// <param name="pending">用家已打的聯想前綴（冇就傳空字串）。</param>
-        public IList<string> Lookup(string prev, string pending)
+        public IList<string> Lookup(string prev)
         {
             var result = new List<string>();
-            pending = pending ?? "";
             lock (_lock)
             {
                 // 1) 個人學習優先（次數多嘅排前）
@@ -254,7 +252,6 @@ namespace QuickIME
                 learned.Sort(CompareLearned);
                 foreach (var e in learned)
                 {
-                    if (!MatchesPrefix(e.Char, pending)) continue;
                     AddUnique(result, e.Char);
                     if (result.Count >= MaxPerChar) return result;
                 }
@@ -267,7 +264,6 @@ namespace QuickIME
                     {
                         foreach (string ch in seed)
                         {
-                            if (!MatchesPrefix(ch, pending)) continue;
                             AddUnique(result, ch);
                             if (result.Count >= MaxPerChar) return result;
                         }
@@ -280,9 +276,7 @@ namespace QuickIME
                 {
                     foreach (char gc in blob)
                     {
-                        string ch = gc.ToString();
-                        if (!MatchesPrefix(ch, pending)) continue;
-                        AddUnique(result, ch);
+                        AddUnique(result, gc.ToString());
                         if (result.Count >= MaxPerChar) return result;
                     }
                 }
@@ -293,7 +287,7 @@ namespace QuickIME
         /// <summary>呢個字有冇聯想（用於決定要唔要顯示）。</summary>
         public bool HasAny(string prev)
         {
-            return Lookup(prev, "").Count > 0;
+            return Lookup(prev).Count > 0;
         }
 
         // ------------------------------------------------------------------
@@ -355,13 +349,6 @@ namespace QuickIME
         // ------------------------------------------------------------------
         //  內部
         // ------------------------------------------------------------------
-        private static bool MatchesPrefix(string ch, string pending)
-        {
-            if (string.IsNullOrEmpty(ch)) return false;
-            if (pending.Length == 0) return true;
-            return ch.StartsWith(pending, StringComparison.Ordinal);
-        }
-
         private void AddOrBump(string prev, string ch, int delta)
         {
             List<AssocEntry> list;

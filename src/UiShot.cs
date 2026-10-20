@@ -46,9 +46,9 @@ namespace QuickIME
             Save(form, pLast);
             Console.WriteLine("最後一頁 -> " + pLast);
 
-            // 無候選情況
+            // 無候選情況（用真正的空 bucket「az」；'z' 本身不是有效碼，不會組字）
             composer.Reset();
-            composer.TypeLetter('z');
+            composer.TypeLetter('a');
             composer.TypeLetter('z');
             Application.DoEvents();
             form.Bounds = new Rectangle(0, 0, 168, 3 * 2 + 24 + 44 + 18);
@@ -60,10 +60,10 @@ namespace QuickIME
             // 聯想字畫面（打完「你」之後列出下一個字）
             var assoc = new Assoc();
             assoc.LoadSeed("你 好 嗎 係 唔 的 有 會 想\n");
-            var items = assoc.Lookup("你", "");
+            var items = assoc.Lookup("你");
             Console.WriteLine("聯想字候選數 = " + items.Count);
             for (int i = 0; i < items.Count; i++) Console.WriteLine("  [" + i + "] = " + items[i]);
-            form.ShowAssoc("你", "", items);
+            form.ShowAssoc("你", items);
             // 寬度要同 CandidateForm 內部計算完全一致（PadX*2 + CellW*count），
             // 否則右邊會露出一截上一次的畫面。
             int assocW = 7 * 2 + 44 * Math.Min(items.Count, CandidateForm.AssocPerPage);
