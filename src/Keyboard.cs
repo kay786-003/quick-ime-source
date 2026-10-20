@@ -212,6 +212,18 @@ namespace QuickIME
         }
     }
 
+    internal enum AssocDigitAction
+    {
+        /// <summary>唔關聯想字事，照正常流程處理。</summary>
+        Ignore = 0,
+        /// <summary>用這個數字選聯想字。</summary>
+        Select,
+        /// <summary>收起聯想窗，個鍵交回系統（例如超出範圍的數字）。</summary>
+        CloseAndPass,
+        /// <summary>唔當選字（Shift+數字模式但冇按 Shift）→ 收起聯想窗後當普通數字打。</summary>
+        PassAsNumber
+    }
+
     /// <summary>
     /// 鍵盤掛鉤：攔截 a-z / 空白 / 數字 / 翻頁 / 退格，交由 Composer 組字。
     /// </summary>
@@ -310,6 +322,29 @@ namespace QuickIME
             return -1;
         }
 
+        /// <summary>
+        /// 聯想字遇到數字鍵時應該做什麼（純邏輯，方便 --selftest 驗證）。
+        ///
+        /// <para>shiftDigitsOn = 用家要「Shift + 數字」才選聯想字（Windows 速成習慣）：</para>
+        /// * 按住 Shift + 1-9 → 選聯想字
+        /// * 冇按 Shift + 1-9   → 唔當選字，收起聯想窗，個數字照常打出來
+        ///   （這樣打完中文字想打「第3章」就唔會被聯想窗吞掉）
+        ///
+        /// <para>shiftDigitsOn = false（v2.2 舊行為）：</para>
+        /// * 任何情況下 1-9 都直接選聯想字
+        /// </summary>
+        internal static AssocDigitAction DecideAssocDigit(
+            bool shiftHeld, bool shiftDigitsOn, int digitIndex, int itemCount)
+        {
+            if (digitIndex < 0) return AssocDigitAction.Ignore;
+
+            if (!shiftDigitsOn)
+                return digitIndex < itemCount ? AssocDigitAction.Select : AssocDigitAction.Ignore;
+
+            if (!shiftHeld) return AssocDigitAction.PassAsNumber;
+            return digitIndex < itemCount ? AssocDigitAction.Select : AssocDigitAction.CloseAndPass;
+        }
+
         private IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
         {
             if (nCode < 0)
@@ -403,28 +438,51 @@ namespace QuickIME
             // 任何其他鍵按下 → 呢次 Shift 就唔再算「單按」
             _gate.NoteOtherKey();
 
+            // 安全網：若系統實際已經冇按住 Shift（掛鉤漏收 keyup），
+            // 就校正狀態，否則會永遠當「長按 Shift」而完全打不到中文字。
+            if (_gate.IsShiftHeld && !ShiftActuallyDown())
+            {
+                _gate.ResetShift();
+                Program.Log("hook: shift state desync -> reset");
+            }
+
+            // ---- 聯想字：Shift + 數字鍵 = 選聯想字（Windows 速成習慣）----
+            // 微軟速成的聯想字要按住 Shift 再按 1-9 才選得到，
+            // 所以這裡一定要放在「長按 Shift 期間唔組字」之前處理，
+            // 否則 Shift 會被當成長按而直接放行，聯想字永遠選不到。
+            if (_assocActive && !ctrl && !alt && !win)
+            {
+                int digitIdx = DigitIndex(vk);
+                var act = DecideAssocDigit(_gate.IsShiftHeld, AssocShiftDigits,
+                                           digitIdx, _assocItems.Count);
+                if (act == AssocDigitAction.Select)
+                {
+                    CommitAssoc(_assocItems[digitIdx]);
+                    return (IntPtr)1;
+                }
+                if (act == AssocDigitAction.CloseAndPass)
+                {
+                    // 超出聯想字範圍（例如只有 5 個卻按了 7）→ 收起聯想窗並放行，
+                    // 用家可能真的想打 Shift+7 或普通數字。
+                    EndAssoc();
+                    return Native.CallNextHookEx(_hook, nCode, wParam, lParam);
+                }
+                // PassAsNumber（Shift+數字 已開但冇按 Shift）→ 落到下面收起聯想窗後
+                // 繼續當普通數字處理，唔會吞掉用家的數字。
+            }
+
             // ---- 長按 Shift 期間：完全唔組字，鍵盤交回原生 ----
             // 打機長按 Shift 跑步時，WASD 一定要傳到遊戲，所以這裡直接放行。
             // （Shift 長期按住亦唔會切換中英，見 ToggleGate 的長按判定。）
             if (_gate.IsShiftHeld)
             {
-                // 安全網：若系統實際已經冇按住 Shift（掛鉤漏收 keyup），
-                // 就校正狀態，否則會永遠打不到中文字。
-                if (!ShiftActuallyDown())
+                if (!ctrl && !alt && !win && _composer.IsComposing)
                 {
-                    _gate.ResetShift();
-                    Program.Log("hook: shift state desync -> reset");
+                    string first = _composer.FirstCandidate();
+                    if (!string.IsNullOrEmpty(first)) { _composer.Commit(first); Flush(); }
+                    else _composer.Cancel();
                 }
-                else
-                {
-                    if (!ctrl && !alt && !win && _composer.IsComposing)
-                    {
-                        string first = _composer.FirstCandidate();
-                        if (!string.IsNullOrEmpty(first)) { _composer.Commit(first); Flush(); }
-                        else _composer.Cancel();
-                    }
-                    return Native.CallNextHookEx(_hook, nCode, wParam, lParam);
-                }
+                return Native.CallNextHookEx(_hook, nCode, wParam, lParam);
             }
 
             // 有 Ctrl / Alt / Win 鍵按著 -> 交回系統（保留快捷鍵）
@@ -442,7 +500,8 @@ namespace QuickIME
                     if (di < onPage) { _composer.SelectOnPage(di); Flush(); return (IntPtr)1; }
                 }
 
-                // 空白：微軟速成習慣 → 下一頁（最後一頁 / 單頁則上屏首選）
+                // 空白：微軟速成習慣 → 下一頁；到尾頁再按 = 繞返第 1 頁（循環，
+                // 永遠不會偷偷上屏）。只有單頁（冇頁可翻）時才直接上屏第一個。
                 if (vk == Native.VK_SPACE) { _composer.PressSpace(); Flush(); return (IntPtr)1; }
 
                 // 翻頁（PageDown/PageUp 仍然可用，方便用家）
@@ -521,6 +580,15 @@ namespace QuickIME
         /// 只是不再新增／累加。這樣用家「暫停學習」唔會失去之前學到的東西。
         /// </summary>
         public bool AssocLearnEnabled { get; set; }
+
+        /// <summary>
+        /// 聯想字要唔要按住 Shift 再按 1-9 才選得到。預設開 = 跟 Windows 速成習慣。
+        ///
+        /// 開（預設）：Shift+1-9 選聯想字；直接按 1-9 就係打數字。
+        ///   這樣打完中文字想打數字（例如「第3章」）就唔會被聯想窗吞掉。
+        /// 關：直接按 1-9 選聯想字（v2.2 舊行為）。
+        /// </summary>
+        public bool AssocShiftDigits { get; set; }
 
         /// <summary>聯想前綴上限（打太多字就自動放棄，避免無限長）。</summary>
         private const int MaxAssocPending = 3;
@@ -613,12 +681,23 @@ namespace QuickIME
         /// </summary>
         private bool HandleAssocKey(uint vk)
         {
-            // 數字 1-9 選聯想字
+            // 數字 1-9 選聯想字。
+            // 預設（Windows 速成習慣）要按住 Shift 才選 —— 那個情況已經在
+            // 掛鉤主流程處理（一定要在「長按 Shift 唔組字」之前）。
+            // 落到這裡仍然係聯想模式，就代表冇按 Shift：
+            //   * 關掉「Shift+數字選字」→ 直接數字選字（v2.2 舊習慣）
+            //   * 開住 → 收起聯想窗，個數字照常打出來
             int di = DigitIndex(vk);
-            if (di >= 0 && di < _assocItems.Count)
+            if (di >= 0)
             {
-                CommitAssoc(_assocItems[di]);
-                return true;
+                var act = DecideAssocDigit(_gate.IsShiftHeld, AssocShiftDigits, di, _assocItems.Count);
+                if (act == AssocDigitAction.Select)
+                {
+                    CommitAssoc(_assocItems[di]);
+                    return true;
+                }
+                EndAssoc();
+                return false;
             }
 
             // 空格 / Esc：收起聯想窗（唔上屏任何東西）
@@ -696,6 +775,7 @@ namespace QuickIME
             _saveAction = saveAction;
             AssocEnabled = assoc != null;
             AssocLearnEnabled = assoc != null;
+            AssocShiftDigits = true;   // 預設跟 Windows 速成：Shift+數字選字
             ContextPrev = "";
             _assocItems = new List<string>();
             _assocActive = false;

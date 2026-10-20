@@ -188,7 +188,69 @@ Missing closing '}' in statement block or type definition.
 
 ---
 
-## 字典為什麼用 702 個 bucket
+## v2.3 的設計轉折：還原「Windows 速成的肌肉記憶」
+
+v2.2 有兩個地方跟 Windows 內建速成不一致，用家一試就察覺到：
+
+1. **聯想字**用家鄉習慣是 **Shift + 數字鍵**，不是直接按數字
+2. **空白鍵**掃到尾頁時，手指仍然會再按一下 —— 而 v2.2 那一下就會上屏
+
+這兩件事的共同點跟 v2.0 一樣：**輸入法不應該做用家沒要求的事**。
+用家按空白鍵的意思是「下一頁」，不是「選字」。
+
+### 空白鍵為什麼改成循環翻頁
+
+原本 `PressSpace()`：
+
+```csharp
+if (SpaceIsNextPage && TotalPages > 1 && PageMove(1)) return true;
+return CommitFirst();     // 尾頁（或單頁）→ 上屏
+```
+
+`CommitFirst()` 上屏的是 `_candidates[0]`，也就是**整個候選清單的第 1 個**，
+不是「目前頁的第 1 個」。所以 v2.2 在尾頁按空白時，
+上屏的其實是第 1 頁第 1 個字 —— 畫面正看著的候選字反而被跳過。這是一個 bug。
+
+改成：
+
+```csharp
+if (TotalPages <= 1) return CommitFirst();   // 冇頁可翻，同微軟速成一樣
+int np = (_page + 1) % TotalPages;           // 尾頁 → 繞返第 1 頁
+_page = np; Raise(); return true;
+```
+
+**設計上的取捨**：這樣做等於「空白鍵永遠不會上屏」。
+用家想上屏要按數字鍵，或者按 Enter／標點（那條路徑仍然會先上屏首選）。
+這是刻意的 —— 少了一個快速上屏的鍵，換來「永遠不會打錯字」。
+
+### Shift+數字選聯想字的三個坑
+
+**坑 1：一定要放在「長按 Shift 唔組字」之前**
+
+掛鉤裡有一段「按住 Shift 期間完全唔組字，鍵盤原樣交給遊戲」（v2.0 打機黨需求）。
+聯想字的 Shift+數字一定要在**那段之前**處理，否則 Shift 會被當成長按而直接放行，
+聯想字永遠選不到。
+
+**坑 2：唔按 Shift 直接按數字，唔可以吞掉**
+
+原本聯想模式下 `1`-`9` 一律當選字。改成 Shift+數字之後，
+若果仍然吞掉數字，用家打完中文字想打「第3章」就會選了一個聯想字。
+所以：`Shift+數字` 才選字，**直接按數字 → 收起聯想窗、數字照常打出來**。
+
+**坑 3：純邏輯要抽出來，否則只能人手測**
+
+判定散在掛鉤裡（有 Win32、有狀態）就無法用 `--selftest` 覆蓋。
+所以抽成純函式 `KeyboardHook.DecideAssocDigit(shiftHeld, shiftDigitsOn, digit, count)`，
+回傳 `Select` / `PassAsNumber` / `CloseAndPass` / `Ignore`，
+掛鉤只負責執行。`--selftest` 直接驗證四個分支。
+
+### 為什麼要保留一個開關
+
+「Shift+數字」是 Windows 的習慣，但 v2.2 已經有用家習慣了直接數字選字。
+所以提供「Shift + 數字鍵選聯想字」開關（預設開），關掉就回復舊行為。
+舊設定檔冇這一行 → 讀成預設開，不需要遷移邏輯。
+
+---
 
 速成只有 1–2 碼，字母 a–z：
 
@@ -331,7 +393,7 @@ public bool ShouldLearn { get { return AssocEnabled && AssocLearnEnabled; } }
 ## 測試
 
 ```powershell
-# 129 項自我測試（字典 + 組字 + 翻頁 + 連打 + 切換 + 設定 + 聯想字 + 學習開關）
+# 148 項自我測試（字典 + 組字 + 翻頁 + 連打 + 切換 + 設定 + 聯想字 + 學習開關 + 選字鍵）
 .\dist\QuickIME.exe --selftest
 
 # 候選窗截圖（不需要真人操作，方便檢查 UI 改動）
@@ -344,9 +406,9 @@ public bool ShouldLearn { get { return AssocEnabled && AssocLearnEnabled; } }
 |------|------|
 | 字典 | 25 個字根有字、`z` 無字、總字數 21701、已知碼驗證 |
 | 基本 | 輸入、組字碼、首選、上屏、重置 |
-| 空格 | 多頁翻頁、最後一頁上屏、單頁直接上屏 |
+| 空格 | 多頁翻頁、尾頁繞返第 1 頁（循環、永不上屏）、單頁直接上屏 |
 | 選字 | 數字鍵選第 N 個 |
-| 翻頁 | PageMove 邊界、頁碼 |
+| 翻頁 | PageMove 邊界（含負數邊界）、頁碼、IsLastPage |
 | 連打 | 滿兩碼自動上屏並開新碼 |
 | 邊界 | 退格、Esc、空碼查詢、不存在的碼 |
 | 切換 | 左／右／兩邊／關閉、長按 700ms 邊界、連發不重設計時、兩邊同按 |
@@ -354,6 +416,7 @@ public bool ShouldLearn { get { return AssocEnabled && AssocLearnEnabled; } }
 | 設定 | ini 讀寫往返、人手改大小寫／舊數字格式／亂值的容錯 |
 | 聯想字 | 中文判定、詞表解析、學習排序、前綴收窄、持久化往返、壞檔容錯、清空記憶、不影響速成次序 |
 | 學習開關 | 預設值、ini 往返、兩個開關互相獨立、舊設定檔相容、關掉後舊記憶保留 |
+| 選字鍵 | Shift+數字判定、超出範圍、唔按 Shift 打數字、關掉後回復舊行為、舊設定檔相容 |
 
 
 ---

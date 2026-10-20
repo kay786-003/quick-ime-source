@@ -32,7 +32,10 @@ namespace QuickIME
         /// <summary>狀態變更（組字碼 / 候選 / 頁碼）時觸發，讓 UI 重畫。</summary>
         public event EventHandler Changed;
 
-        /// <summary>空格鍵行為（預設：微軟速成習慣 = 下一頁）。</summary>
+        /// <summary>
+        /// 空格鍵行為（預設：微軟速成習慣 = 下一頁，到尾頁就繞返第 1 頁）。
+        /// 關掉之後空格變成「直接上屏目前反白嘅候選」。
+        /// </summary>
         public bool SpaceIsNextPage { get; set; }
 
         public Composer(Dict dict)
@@ -43,14 +46,25 @@ namespace QuickIME
 
         /// <summary>
         /// 按下空白鍵。
-        /// * 有多頁 → 下一頁（最後一頁則上屏首選）
-        /// * 只有一頁 → 上屏首選
+        /// * 有多頁 → 下一頁；到尾頁再按 → <b>繞返第 1 頁</b>（循環翻頁，永遠唔會偷偷上屏）
+        /// * 只有一頁 → 上屏第 1 個（根本冇頁可翻，同微軟速成一樣）
+        ///
+        /// 點解尾頁要繞返第 1 頁：微軟速成用家習慣「一路按空白鍵掃候選字」，
+        /// 掃到尾頁時手指仍然會再按一下。若果呢一下就上屏，
+        /// 用家就會在「只係想再睇一次」嘅情況下打出一個字（而且係錯嘅字）。
+        /// 所以空白鍵只負責翻頁；要上屏就按數字鍵（或 Enter／標點）。
         /// </summary>
         public bool PressSpace()
         {
             if (!IsComposing) return false;
-            if (SpaceIsNextPage && TotalPages > 1 && PageMove(1)) return true;
-            return CommitFirst();
+            if (!SpaceIsNextPage) return CommitFirst();
+            if (TotalPages <= 1) return CommitFirst();
+
+            int np = (_page + 1) % TotalPages;
+            if (np == _page) return false;
+            _page = np;
+            Raise();
+            return true;
         }
 
         public bool IsComposing { get { return _code.Length > 0; } }
@@ -135,7 +149,7 @@ namespace QuickIME
             _page = 0;
         }
 
-        /// <summary>空格：上屏首選。</summary>
+        /// <summary>直接把目前的第一候選上屏（Enter／標點／單頁空白用）。</summary>
         public bool CommitFirst()
         {
             if (!IsComposing) return false;
@@ -219,6 +233,9 @@ namespace QuickIME
 
         /// <summary>目前組字碼的候選總數。</summary>
         public int Count { get { return _candidates.Count; } }
+
+        /// <summary>目前頁是否已經係最後一頁（候選窗底部提示用）。</summary>
+        public bool IsLastPage { get { return _page >= TotalPages - 1; } }
 
         /// <summary>所有候選（測試用）。</summary>
         public IList<string> AllCandidates { get { return _candidates; } }

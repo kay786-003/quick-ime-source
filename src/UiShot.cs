@@ -39,6 +39,13 @@ namespace QuickIME
             Save(form, p2);
             Console.WriteLine("第二頁 -> " + p2);
 
+            // 最後一頁（驗證「空格 返回第 1 頁」提示）
+            while (!composer.IsLastPage) composer.PageMove(1);
+            Application.DoEvents();
+            string pLast = Path.Combine(Path.GetDirectoryName(outPath), "shot-lastpage.png");
+            Save(form, pLast);
+            Console.WriteLine("最後一頁 -> " + pLast);
+
             // 無候選情況
             composer.Reset();
             composer.TypeLetter('z');

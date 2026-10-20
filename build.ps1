@@ -88,14 +88,15 @@ if (-not $SkipRelease) {
     New-Item -ItemType Directory -Force -Path $relDir | Out-Null
     Copy-Item $outExe -Destination (Join-Path $relDir 'QuickIME.exe') -Force
 
-    # 打包成 zip（exe + 說明書 + 示意圖）
-    $zipName = '速成輸入法_v2.2.zip'
+    # 打包成 zip（exe + 字典 + 說明書 + 示意圖）
+    $zipName = '速成輸入法_v2.3.zip'
     $zipPath = Join-Path $relDir $zipName
     Remove-Item $zipPath -ErrorAction SilentlyContinue
     $tmp = Join-Path $env:TEMP ('qime-pack-' + [guid]::NewGuid().ToString('N').Substring(0,8))
     $inner = Join-Path $tmp '速成輸入法'
     New-Item -ItemType Directory -Force -Path $inner | Out-Null
     Copy-Item $outExe -Destination $inner -Force
+    Copy-Item $dictPath -Destination $inner -Force
     foreach ($extra in @('使用說明.txt', '候選字視窗示意圖.png')) {
         $src2 = Join-Path $relDir $extra
         if (Test-Path $src2) { Copy-Item $src2 -Destination $inner -Force }

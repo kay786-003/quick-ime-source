@@ -18,7 +18,7 @@ namespace QuickIME
     internal static class Program
     {
         internal const string AppName = "速成輸入法";
-        internal const string Version = "2.2";
+        internal const string Version = "2.3";
 
         internal static readonly string LogPath = ResolveLogPath();
 
@@ -190,6 +190,7 @@ namespace QuickIME
         private readonly ToolStripMenuItem _ctrlSpaceItem;
         private readonly ToolStripMenuItem _assocItem;
         private readonly ToolStripMenuItem _assocLearnItem;
+        private readonly ToolStripMenuItem _assocShiftDigitsItem;
         private readonly ToolStripMenuItem _assocClearItem;
         private readonly Settings _settings;
 
@@ -230,6 +231,7 @@ namespace QuickIME
             _hook.InitAssoc(_assoc, delegate { SaveAssoc(); });
             _hook.AssocEnabled = _settings.AssocEnabled;
             _hook.AssocLearnEnabled = _settings.AssocLearnEnabled;
+            _hook.AssocShiftDigits = _settings.AssocShiftDigits;
             Program.Log("ctor: assoc loaded, pairs=" + _assoc.LearnedPairs +
                         ", learn=" + _settings.AssocLearnEnabled);
 
@@ -237,6 +239,7 @@ namespace QuickIME
             _hook.AssocChanged += (s, e) =>
             {
                 if (!_hook.AssocActive) { _cand.HideNow(); return; }
+                _cand.AssocShiftDigits = _hook.AssocShiftDigits;
                 _cand.ShowAssoc(_hook.ContextPrev, _hook.AssocPending, _hook.AssocItems);
                 RestartAssocHideTimer();
             };
@@ -254,6 +257,7 @@ namespace QuickIME
             _ctrlSpaceItem = MakeCheck("攔住 Ctrl+空白（唔會轉全形符號）", false, (s, e) => ToggleCtrlSpace());
             _assocItem = MakeCheck("聯想字（打完字自動提示下一個字）", false, (s, e) => ToggleAssoc());
             _assocLearnItem = MakeCheck("記錄用字習慣（常用的組合排更前）", false, (s, e) => ToggleAssocLearn());
+            _assocShiftDigitsItem = MakeCheck("Shift + 數字鍵選聯想字（同 Windows 速成一樣）", false, (s, e) => ToggleAssocShiftDigits());
 
             var settingsMenu = new ToolStripMenuItem("設定");
             settingsMenu.DropDownItems.Add(new ToolStripMenuItem("中英切換鍵（單按 Shift）") { Enabled = false });
@@ -273,6 +277,7 @@ namespace QuickIME
             assocMenu.DropDownItems.Add(new ToolStripSeparator());
             assocMenu.DropDownItems.Add(_assocItem);
             assocMenu.DropDownItems.Add(_assocLearnItem);
+            assocMenu.DropDownItems.Add(_assocShiftDigitsItem);
             assocMenu.DropDownItems.Add(new ToolStripSeparator());
             assocMenu.DropDownItems.Add(_assocClearItem);
 
@@ -409,6 +414,27 @@ namespace QuickIME
                     : "已停止學習新習慣；之前學到的記憶仍然保留，聯想仍然照舊排序。");
         }
 
+        /// <summary>
+        /// 切換「聯想字要唔要 Shift+數字鍵選」。
+        ///
+        /// 預設開（Windows 速成習慣）：Shift+1-9 選聯想字，直接按 1-9 就打數字。
+        /// 關掉就返回 v2.2 舊行為：直接按 1-9 選聯想字。
+        /// </summary>
+        private void ToggleAssocShiftDigits()
+        {
+            _settings.AssocShiftDigits = !_settings.AssocShiftDigits;
+            _hook.AssocShiftDigits = _settings.AssocShiftDigits;
+            _settings.Save();
+            SyncSettingsMenu();
+            Program.Log("settings: assoc shift+digits = " + _settings.AssocShiftDigits);
+
+            ShellNotify.Show(
+                Program.AppName + " - 聯想字選字鍵",
+                _settings.AssocShiftDigits
+                    ? "已改為 Shift + 數字鍵選聯想字（跟 Windows 速成）；直接按 1-9 會打數字。"
+                    : "已改為直接按 1-9 選聯想字。");
+        }
+
         /// <summary>清空聯想字記憶（先確認，因為呢個動作不可逆）。</summary>
         private void ClearAssocMemory()
         {
@@ -452,8 +478,10 @@ namespace QuickIME
 
             _assocItem.Checked = _settings.AssocEnabled;
             _assocLearnItem.Checked = _settings.AssocLearnEnabled;
-            // 聯想字關掉時，「記錄習慣」無意義 → 變灰（但保留原本的勾選狀態）
+            _assocShiftDigitsItem.Checked = _settings.AssocShiftDigits;
+            // 聯想字關掉時，「記錄習慣」同「Shift+數字」無意義 → 變灰（但保留原本的勾選狀態）
             _assocLearnItem.Enabled = _settings.AssocEnabled;
+            _assocShiftDigitsItem.Enabled = _settings.AssocEnabled;
             _assocClearItem.Enabled = _settings.AssocEnabled;
             _assocClearItem.Text = _assoc.LearnedPairs > 0
                 ? "清空聯想字記憶…（已學習 " + _assoc.LearnedPairs + " 組）"
@@ -552,7 +580,8 @@ namespace QuickIME
             sb.AppendLine("    中 = l      人 = o      日 = a   （單碼也可以）");
             sb.AppendLine();
             sb.AppendLine("【按鍵】");
-            sb.AppendLine("  空白鍵      下一頁（微軟速成慣例；到最後一頁再按 = 選第 1 個字）");
+            sb.AppendLine("  空白鍵      下一頁（微軟速成慣例；到最後一頁再按 = 繞返第 1 頁，");
+            sb.AppendLine("              循環翻頁，永遠唔會偷偷上屏）");
             sb.AppendLine("  數字 1-9    選第 1-9 個候選字");
             sb.AppendLine("  PageUp / -   上一頁");
             sb.AppendLine("  PageDown / + 下一頁（與空白鍵相同）");
@@ -581,17 +610,18 @@ namespace QuickIME
             sb.AppendLine();
             sb.AppendLine("【聯想字：打完一個字，提示下一個字】");
             sb.AppendLine("  例：你打「你」→ 下面列出「好 嗎 係 唔 的 有 會 想 了」");
-            sb.AppendLine("     按數字 1-9 直接選，第二個字之後又會再提示下一次。");
+            sb.AppendLine("     按住 Shift 再按 1-9 直接選，第二個字之後又會再提示下一次。");
             sb.AppendLine();
             sb.AppendLine("  佢會「學」你嘅習慣：");
             sb.AppendLine("    你打「你」之後成日接「係」，打多幾次，「係」就會排到最前，");
             sb.AppendLine("    好似拼音輸入法咁越用越貼你。");
             sb.AppendLine();
             sb.AppendLine("  聯想窗操作：");
-            sb.AppendLine("    數字 1-9    選聯想字（選完會繼續提示下一個字）");
-            sb.AppendLine("    空格        收起聯想窗（唔會上屏任何東西）");
-            sb.AppendLine("    Esc         收起聯想窗");
-            sb.AppendLine("    直接打速成碼  照常打字（聯想窗會自動收起）");
+            sb.AppendLine("    Shift + 數字 1-9  選聯想字（跟 Windows 速成習慣）");
+            sb.AppendLine("    數字 1-9          直接打數字（唔會被聯想窗吞掉）");
+            sb.AppendLine("    空格              收起聯想窗（唔會上屏任何東西）");
+            sb.AppendLine("    Esc               收起聯想窗");
+            sb.AppendLine("    直接打速成碼      照常打字（聯想窗會自動收起）");
             sb.AppendLine("  （聯想窗 6 秒無用會自動收埋，唔會阻住畫面）");
             sb.AppendLine();
             sb.AppendLine("  聯想字只會建議「單一個中文字」；標點、英文、數字都唔會學。");
@@ -605,6 +635,10 @@ namespace QuickIME
             sb.AppendLine("    勾選（預設）：會學你嘅用字習慣，常用組合排更前。");
             sb.AppendLine("    取消勾選：仍然有聯想字，但只用出廠詞表，唔會再學新嘅。");
             sb.AppendLine("              （之前學到嘅記憶會保留，聯想仍然照舊排序）");
+            sb.AppendLine();
+            sb.AppendLine("  ★ 選字鍵：右鍵圖示 → 聯想字 → 「Shift + 數字鍵選聯想字」");
+            sb.AppendLine("    勾選（預設）：Shift+1-9 選聯想字，直接按 1-9 就打數字。");
+            sb.AppendLine("    取消勾選：直接按 1-9 選聯想字（v2.2 舊習慣）。");
             sb.AppendLine();
             sb.AppendLine("  唔想用聯想字：右鍵圖示 → 聯想字 → 取消勾選「聯想字」。");
             sb.AppendLine();
@@ -731,6 +765,14 @@ namespace QuickIME
         public bool AssocLearnEnabled = true;
 
         /// <summary>
+        /// 聯想字要按住 Shift + 數字鍵才選得到（Windows 速成習慣）。預設開。
+        ///
+        /// 開：Shift+1-9 選聯想字，直接按 1-9 = 打數字。
+        /// 關：直接按 1-9 選聯想字（v2.2 舊行為）。
+        /// </summary>
+        public bool AssocShiftDigits = true;
+
+        /// <summary>
         /// 設定檔路徑。若 AppData 被鎖（網吧 / 受管制電腦常見）就回傳 null，
         /// 之後一律當「冇設定檔」處理 —— 寧願唔記得設定，都唔可以開唔到程式。
         /// </summary>
@@ -826,6 +868,7 @@ namespace QuickIME
                 else if (k == "BlockCtrlSpace") BlockCtrlSpace = (v != "0");
                 else if (k == "AssocEnabled") AssocEnabled = (v != "0");
                 else if (k == "AssocLearnEnabled") AssocLearnEnabled = (v != "0");
+                else if (k == "AssocShiftDigits") AssocShiftDigits = (v != "0");
             }
         }
 
@@ -837,6 +880,7 @@ namespace QuickIME
                    "BlockCtrlSpace=" + (BlockCtrlSpace ? "1" : "0") + "\r\n" +
                    "AssocEnabled=" + (AssocEnabled ? "1" : "0") + "\r\n" +
                    "AssocLearnEnabled=" + (AssocLearnEnabled ? "1" : "0") + "\r\n" +
+                   "AssocShiftDigits=" + (AssocShiftDigits ? "1" : "0") + "\r\n" +
                    "LastVersionSeen=" + LastVersionSeen + "\r\n";
         }
 
@@ -882,8 +926,8 @@ namespace QuickIME
             Save();
             ShellNotify.Show(
                 Program.AppName + " " + Program.Version + " 已啟動",
-                "新增「記錄用字習慣」開關：右鍵圖示 → 聯想字 → 可以隨時開／關學習，" +
-                "亦可以清空聯想記憶。");
+                "聯想字改用 Shift + 數字鍵選字（跟 Windows 速成）；" +
+                "空白鍵改為循環翻頁，到尾頁再按會返第 1 頁，唔會再偷偷上屏。");
         }
     }
 

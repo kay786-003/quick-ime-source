@@ -102,7 +102,7 @@ namespace QuickIME
             Eq("明", committed, "上屏「明」");
             Check(!c.IsComposing, "上屏後重置");
 
-            // ---- 空格 = 下一頁（微軟速成習慣）----
+            // ---- 空格 = 下一頁（微軟速成習慣；尾頁繞返第 1 頁）----
             c.Reset();
             c.TypeLetter('h'); c.TypeLetter('i');
             int pagesHi = c.TotalPages;
@@ -112,12 +112,29 @@ namespace QuickIME
             Check(c.IsComposing, "空格未上屏（因為要翻頁）");
             Eq((beforePage + 1).ToString(), c.Page.ToString(), "空格 = 下一頁");
 
-            // 最後一頁再按空格 -> 上屏首選
+            // 到尾頁再按空格 -> 繞返第 1 頁，唔會偷偷上屏
             committed = null;
             while (c.Page < c.TotalPages - 1) c.PressSpace();
-            string firstOnLast = c.FirstCandidate();
+            Check(c.IsLastPage, "已到最後一頁");
+            string lastFirst = c.CurrentPage()[0];
             c.PressSpace();
-            Eq(firstOnLast, committed, "最後一頁按空格上屏首選");
+            Check(c.IsComposing, "最後一頁按空格仍然在組字（唔會偷偷上屏）");
+            Check(committed == null, "最後一頁按空格沒有上屏任何字");
+            Eq("0", c.Page.ToString(), "最後一頁按空格 -> 繞返第 1 頁");
+            Check(c.CurrentPage()[0] != lastFirst, "繞返第 1 頁後候選與尾頁不同");
+
+            // 循環：一直按空格，頁碼會順序 0,1,...,尾頁,0,1...
+            c.Reset();
+            c.TypeLetter('h'); c.TypeLetter('i');
+            int pages2 = c.TotalPages;
+            bool cycleOk = true;
+            for (int i = 1; i <= pages2 * 2; i++)
+            {
+                c.PressSpace();
+                if (c.Page != (i % pages2)) { cycleOk = false; break; }
+                if (!c.IsComposing) { cycleOk = false; break; }
+            }
+            Check(cycleOk, "連續按空白鍵會循環翻頁 " + pages2 + " 頁，中途不會上屏");
 
             // 單頁時空格直接上屏
             committed = null;
@@ -156,6 +173,12 @@ namespace QuickIME
             c.PageMove(1);
             Eq("1", c.Page.ToString(), "翻頁 -> 頁碼 1");
             Check(c.CurrentPage()[0] != p1, "第二頁與第一頁不同");
+
+            // 上一頁邊界：第 1 頁再按 PageUp 不會變負數
+            c.PageSelect(0);
+            c.PageMove(-1);
+            Eq("0", c.Page.ToString(), "第 1 頁再按上一頁 -> 停在 0（不會負數）");
+            Check(!c.IsLastPage, "第 1 頁 IsLastPage = false");
 
             // 退格
             c.Reset();
@@ -310,6 +333,19 @@ namespace QuickIME
             st7.Apply(st6.ToIni().Split(new[] { "\r\n" }, StringSplitOptions.None));
             Check(!st7.AssocLearnEnabled, "讀回 AssocLearnEnabled = false");
 
+            // Shift+數字選聯想字（預設開 = Windows 速成習慣；ini 往返）
+            Check(new Settings().AssocShiftDigits, "預設「Shift+數字鍵選聯想字」開啟（跟 Windows 速成）");
+            var st10 = new Settings();
+            st10.AssocShiftDigits = false;
+            Check(st10.ToIni().Contains("AssocShiftDigits=0"), "寫出 AssocShiftDigits=0");
+            var st11 = new Settings();
+            st11.Apply(st10.ToIni().Split(new[] { "\r\n" }, StringSplitOptions.None));
+            Check(!st11.AssocShiftDigits, "讀回 AssocShiftDigits = false");
+            // 舊設定檔（v2.2，冇呢一行）→ 預設跟 Windows 速成開啟
+            var st12 = new Settings();
+            st12.Apply(new[] { "ChineseMode=1", "AssocEnabled=1", "AssocLearnEnabled=1" });
+            Check(st12.AssocShiftDigits, "舊設定檔冇呢一行 -> 預設開啟（相容 v2.2）");
+
             // 兩個開關互不影響：只關學習，聯想仍然開
             var st8 = new Settings();
             st8.AssocLearnEnabled = false;
@@ -319,6 +355,34 @@ namespace QuickIME
             var st9 = new Settings();
             st9.Apply(new[] { "ChineseMode=1", "AssocEnabled=1" });
             Check(st9.AssocLearnEnabled, "舊設定檔冇呢一行 -> 學習預設開啟（相容 v2.1）");
+
+            // ---- 聯想字選字鍵（Shift + 數字，跟 Windows 速成）----
+            Console.WriteLine();
+            Console.WriteLine("--- 聯想字選字鍵（Shift + 數字）---");
+
+            // 預設（Shift+數字 開）：按住 Shift 才選字
+            Check(KeyboardHook.DecideAssocDigit(true, true, 0, 5) == AssocDigitAction.Select,
+                "Shift+1 有聯想 -> 選第 1 個聯想字");
+            Check(KeyboardHook.DecideAssocDigit(true, true, 8, 9) == AssocDigitAction.Select,
+                "Shift+9（9 個聯想）-> 選第 9 個");
+            Check(KeyboardHook.DecideAssocDigit(true, true, 6, 5) == AssocDigitAction.CloseAndPass,
+                "Shift+7 但只有 5 個聯想 -> 收起聯想窗，個鍵交回系統");
+
+            // 冇按 Shift：唔選字，個數字照常打出來
+            Check(KeyboardHook.DecideAssocDigit(false, true, 0, 9) == AssocDigitAction.PassAsNumber,
+                "唔按 Shift 直接按 1 -> 打數字（唔會被聯想窗吞掉）");
+
+            // 非數字鍵：唔關聯想字事
+            Check(KeyboardHook.DecideAssocDigit(true, true, -1, 9) == AssocDigitAction.Ignore,
+                "非數字鍵 -> 聯想字判定唔干預");
+
+            // 關掉「Shift+數字」（v2.2 舊行為）：直接按數字就選
+            Check(KeyboardHook.DecideAssocDigit(false, false, 2, 9) == AssocDigitAction.Select,
+                "關掉 Shift+數字 -> 直接按 3 就選第 3 個聯想字");
+            Check(KeyboardHook.DecideAssocDigit(true, false, 2, 9) == AssocDigitAction.Select,
+                "關掉 Shift+數字 -> 按住 Shift 亦照樣選");
+            Check(KeyboardHook.DecideAssocDigit(false, false, 7, 5) == AssocDigitAction.Ignore,
+                "關掉 Shift+數字 + 超出範圍 -> 唔消耗（交回系統）");
 
             // ---- 聯想字（Assoc）----
             RunAssocTests(dict);

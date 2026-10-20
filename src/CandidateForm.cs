@@ -56,6 +56,7 @@ namespace QuickIME
 
         public CandidateForm()
         {
+            AssocShiftDigits = true;   // 預設跟 Windows 速成：Shift+數字選字
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer |
                      ControlStyles.UserPaint, true);
             FormBorderStyle = FormBorderStyle.None;
@@ -123,6 +124,12 @@ namespace QuickIME
             _assocItems = items ?? new List<string>();
             Render();
         }
+
+        /// <summary>
+        /// 聯想字要唔要 Shift+數字才選得到（只影響底部提示文字）。
+        /// 預設 true = 跟 Windows 速成；Program 會依設定與掛鉤同步。
+        /// </summary>
+        public bool AssocShiftDigits { get; set; }
 
         /// <summary>
         /// 只按目前內容重畫，不重新定位 / 不改尺寸。
@@ -361,7 +368,8 @@ namespace QuickIME
             }
             else
             {
-                foot = total + "/" + total + "   空格 選字第 1 個";
+                // 尾頁再按空白 = 繞返第 1 頁（循環），永遠唔會偷偷上屏
+                foot = total + "/" + total + "   空格 返回第 1 頁";
             }
             using (var b = new SolidBrush(DimColor))
                 g.DrawString(foot, _fontSmall, b, PadX + 1, Height - FootH - 1);
@@ -406,7 +414,8 @@ namespace QuickIME
             }
 
             // 底部：提示
-            string foot = "1-" + count + " 選字　空格 = 取消　Esc = 取消";
+            string pick = AssocShiftDigits ? "Shift+1-" + count + " 選字" : "1-" + count + " 選字";
+            string foot = pick + "　空格 = 取消　Esc = 取消";
             using (var b = new SolidBrush(DimColor))
                 g.DrawString(foot, _fontSmall, b, PadX + 1, Height - FootH - 1);
         }

@@ -14,8 +14,8 @@ QuickIME.exe  (127 KB，字典 + 聯想詞表已內嵌)
 
 | 下載 | 檔案 | 說明 |
 |------|------|------|
-| **[QuickIME.exe](https://github.com/kay786-003/quick-ime-source/releases/download/v2.2/QuickIME.exe)** | 單一執行檔，雙擊即用（字典 + 聯想詞表已內嵌） |
-| **[QuickIME-v2.2.zip](https://github.com/kay786-003/quick-ime-source/releases/download/v2.2/QuickIME-v2.2.zip)** | exe + 字典 + 使用說明 + 示意圖 |
+| **[QuickIME.exe](https://github.com/kay786-003/quick-ime-source/releases/download/v2.3/QuickIME.exe)** | 單一執行檔，雙擊即用（字典 + 聯想詞表已內嵌） |
+| **[QuickIME-v2.3.zip](https://github.com/kay786-003/quick-ime-source/releases/download/v2.3/QuickIME-v2.3.zip)** | exe + 字典 + 使用說明 + 示意圖 |
 
 > 也可以到 **[Releases](https://github.com/kay786-003/quick-ime-source/releases)** 頁面查看所有正式版本。
 
@@ -27,7 +27,7 @@ QuickIME.exe  (127 KB，字典 + 聯想詞表已內嵌)
 > **用法**：把原本的 GitHub 網址**原封不動**貼在前綴後面，不用改任何字。
 >
 > 下面所有鏡像都在 **2026-10-19** 實測過：完整下載 `QuickIME.exe`（130,048 bytes）
-> 與 `QuickIME-v2.2.zip`，SHA256 與 GitHub Release **完全一致**。
+> 與 `QuickIME-v2.3.zip`，SHA256 與 GitHub Release **完全一致**。
 
 | 鏡像前綴 | 實測 | 備註 |
 |----------|------|------|
@@ -50,19 +50,19 @@ QuickIME.exe  (127 KB，字典 + 聯想詞表已內嵌)
 #### QuickIME.exe 直連（揀一個可以下載的，複製即可）
 
 ```
-https://gh-proxy.com/https://github.com/kay786-003/quick-ime-source/releases/download/v2.2/QuickIME.exe
-https://ghfast.top/https://github.com/kay786-003/quick-ime-source/releases/download/v2.2/QuickIME.exe
-https://gh.llkk.cc/https://github.com/kay786-003/quick-ime-source/releases/download/v2.2/QuickIME.exe
-https://gh-proxy.org/https://github.com/kay786-003/quick-ime-source/releases/download/v2.2/QuickIME.exe
-https://gh.monlor.com/https://github.com/kay786-003/quick-ime-source/releases/download/v2.2/QuickIME.exe
-https://ghproxy.imciel.com/https://github.com/kay786-003/quick-ime-source/releases/download/v2.2/QuickIME.exe
-https://ghfile.geekertao.top/https://github.com/kay786-003/quick-ime-source/releases/download/v2.2/QuickIME.exe
-https://gh.nxnow.top/https://github.com/kay786-003/quick-ime-source/releases/download/v2.2/QuickIME.exe
-https://gh.sixyin.com/https://github.com/kay786-003/quick-ime-source/releases/download/v2.2/QuickIME.exe
-https://cors.isteed.cc/https://github.com/kay786-003/quick-ime-source/releases/download/v2.2/QuickIME.exe
+https://gh-proxy.com/https://github.com/kay786-003/quick-ime-source/releases/download/v2.3/QuickIME.exe
+https://ghfast.top/https://github.com/kay786-003/quick-ime-source/releases/download/v2.3/QuickIME.exe
+https://gh.llkk.cc/https://github.com/kay786-003/quick-ime-source/releases/download/v2.3/QuickIME.exe
+https://gh-proxy.org/https://github.com/kay786-003/quick-ime-source/releases/download/v2.3/QuickIME.exe
+https://gh.monlor.com/https://github.com/kay786-003/quick-ime-source/releases/download/v2.3/QuickIME.exe
+https://ghproxy.imciel.com/https://github.com/kay786-003/quick-ime-source/releases/download/v2.3/QuickIME.exe
+https://ghfile.geekertao.top/https://github.com/kay786-003/quick-ime-source/releases/download/v2.3/QuickIME.exe
+https://gh.nxnow.top/https://github.com/kay786-003/quick-ime-source/releases/download/v2.3/QuickIME.exe
+https://gh.sixyin.com/https://github.com/kay786-003/quick-ime-source/releases/download/v2.3/QuickIME.exe
+https://cors.isteed.cc/https://github.com/kay786-003/quick-ime-source/releases/download/v2.3/QuickIME.exe
 ```
 
-想下載 zip 版，把結尾的 `QuickIME.exe` 換成 `QuickIME-v2.2.zip` 就可以。
+想下載 zip 版，把結尾的 `QuickIME.exe` 換成 `QuickIME-v2.3.zip` 就可以。
 
 #### 也可以用 repo 內的備份 exe
 
@@ -93,19 +93,19 @@ https://raw.githubusercontent.com/kay786-003/quick-ime-source/main/releases/Quic
 
 ### 檔案校驗
 
-本專案 v2.2 的 Release 檔案 SHA256（**這是固定值，可直接比對**）：
+本專案 v2.3 的 Release 檔案 SHA256（**這是本次發佈的實際值，可直接比對**）：
 
 | 檔案 | 大小 | SHA256 |
 |------|------|--------|
-| `QuickIME.exe` | 130,048 bytes | `d099d441fd347a65e94f6ea324375e9206137cb22dbfe1a7d58cea0870b118b8` |
-| `QuickIME-v2.2.zip` | 131,458 bytes | `65168b160a527285051108a8fc103b51f3c72b5265713adcf1f93020e4d95a6e` |
+| `QuickIME.exe` | 134,144 bytes | `64748d4baed535027c739c3e290b1a13cef1ba4e03c0a01c55bd1c1cb9f3dd55` |
+| `QuickIME-v2.3.zip` | 132,213 bytes | `af2c8b5c41be45e420e699cea00bdd812084589a5088547fc2e706fd64717017` |
 
 在 PowerShell 執行：
 
 ```powershell
 Get-FileHash .\QuickIME.exe -Algorithm SHA256
-.\QuickIME.exe --version      # 應顯示 2.2
-.\QuickIME.exe --selftest     # 應顯示全部 129 項通過
+.\QuickIME.exe --version      # 應顯示 2.3
+.\QuickIME.exe --selftest     # 應顯示全部 148 項通過
 ```
 
 > ⚠️ `releases/` 資料夾裡那份由 CI 自動重建，因為 .NET 每次會嵌入不同的 MVID，
@@ -167,10 +167,11 @@ Get-FileHash .\QuickIME.exe -Algorithm SHA256
 - ✅ 速成（首碼 + 尾碼）查字，**21,701 字**，含香港增補字符集
 - ✅ 單碼輸入（`a` → 日、`o` → 人）
 - ✅ 候選字視窗，跟隨文字插入點
-- ✅ **空格 = 下一頁**（微軟速成慣例）
+- ✅ **空格 = 下一頁**（微軟速成慣例；到尾頁再按會繞返第 1 頁，不會偷偷上屏）
 - ✅ 數字鍵 1–9 選字
 - ✅ 連打（打滿兩碼再打字母會自動上屏首選）
 - ✅ **聯想字：打完一個字自動提示下一個字，會學習你的用字習慣**（見下節）
+- ✅ **聯想字用 `Shift` + 數字鍵選字**（同 Windows 速成一樣；直接按 1–9 就打數字）
 - ✅ **可設定左／右 Shift 單按切換中英**（見下節，打機長按 Shift 不會誤切換）
 - ✅ **符號永遠半形**，可攔住 `Ctrl+空白`（不會誤轉全形）
 - ✅ **系統匣圖示依模式變色**（藍＝中文／灰＝英文／深灰＝暫停）
@@ -181,13 +182,18 @@ Get-FileHash .\QuickIME.exe -Algorithm SHA256
 
 ## v2.1 更新重點：聯想字（會學習你）
 
-打完一個中文字，自動列出「最可能接住落去」的字，按數字鍵直接選：
+打完一個中文字，自動列出「最可能接住落去」的字，按 **`Shift` + 數字鍵** 直接選：
 
 ```
 聯想  你
  1   2   3   4   5   6   7   8   9
 好  嗎  係  唔  的  有  會  想  了
 ```
+
+> **v2.3 起跟足 Windows 速成：** 聯想字要**按住 `Shift`** 再按 `1`–`9` 才選得到；
+> 直接按 `1`–`9` 就是打數字。這樣打完中文字想打「第3章」就不會被聯想窗吞掉。
+> 想改回 v2.2 的直接數字選字：右鍵圖示 → **聯想字** → 取消勾選
+> **「Shift + 數字鍵選聯想字」**。
 
 ### 同 Windows 內建聯想字的分別：**佢會學你**
 
@@ -221,7 +227,8 @@ Windows 的聯想字是固定的。本專案的聯想字會**記錄你的用字�
 
 | 按鍵 | 功能 |
 |------|------|
-| `1`–`9` | 選聯想字（選完繼續提示下一個字） |
+| `Shift` + `1`–`9` | 選聯想字（選完繼續提示下一個字） |
+| `1`–`9`（不按 Shift） | 直接打數字（聯想窗自動收起，不會吞掉你的數字） |
 | `空白鍵` / `Esc` | 收起聯想窗（不上屏任何東西） |
 | 直接打速成碼 | 照常打字（聯想窗自動收起） |
 
@@ -237,6 +244,33 @@ Windows 的聯想字是固定的。本專案的聯想字會**記錄你的用字�
 
 記憶存在 `%APPDATA%\QuickIME\assoc.txt`（純文字，可自行檢視或編輯）；
 刪掉該檔等同清空。不想用聯想字：右鍵 → **聯想字** → 取消勾選即可。
+
+---
+
+## 🆕 v2.3 更新重點：更貼近 Windows 速成的鍵盤習慣
+
+兩件「肌肉記憶」的事，改成跟 Windows 內建速成一致：
+
+| 項目 | v2.2 | v2.3 |
+|------|------|------|
+| 聯想字選字 | 直接按 `1`–`9` | **`Shift` + `1`–`9`**（直接按 = 打數字） |
+| 空白鍵到尾頁 | 再按 = 上屏第 1 頁第 1 個字 | **再按 = 繞返第 1 頁**，循環翻頁 |
+
+### 為什麼空白鍵不再「到尾頁就上屏」
+
+微軟速成用家掃候選字時，手指會一直按空白鍵。掃到尾頁那一下如果就上屏，
+用家會在意想不到的情況下打出一個字（而且是錯的字）。
+所以 v2.3 的空白鍵**只負責翻頁**：到尾頁再按就是繞返第 1 頁，永遠不會偷偷上屏。
+要上屏就按數字鍵（或用 `Enter`／標點，維持原本的「先上屏首選」行為）。
+
+順帶修正了一個舊 bug：v2.2 在尾頁按空白，上屏的是**第 1 頁**的第 1 個字，
+而不是畫面正看著的那一頁的候選字。
+
+### 聯想字 Shift+數字可關閉
+
+右鍵系統匣 → **聯想字** → 勾選／取消 **「Shift + 數字鍵選聯想字」**。
+取消之後就回復 v2.2 的直接數字選字。
+（聯想字關掉時這一項會變灰，因為已經沒有意義。）
 
 ---
 
@@ -317,8 +351,8 @@ v2.0 全部改掉：
 
 | 按鍵 | 功能 |
 |------|------|
-| `空白鍵` | 下一頁（最後一頁再按 = 選第 1 個字） |
-| `1`–`9` | 選第 1–9 個候選字 |
+| `空白鍵` | 下一頁；**到尾頁再按 = 繞返第 1 頁**（循環翻頁，永遠不會偷偷上屏） |
+| `1`–`9` | 選目前頁第 1–9 個候選字 |
 | `PageUp` / `-` | 上一頁 |
 | `PageDown` / `+` | 下一頁 |
 | `退格鍵` | 刪一個輸入碼 |
@@ -328,6 +362,9 @@ v2.0 全部改掉：
 
 > 長按 Shift（>0.7 秒）或按住期間按過其他鍵，都不會觸發切換。
 > 按住 Shift 期間也完全不組字，鍵盤原樣傳給遊戲。
+>
+> **例外：聯想字窗開著時，`Shift` + `1`–`9` 會用來選聯想字**
+> （跟 Windows 速成一樣）。放開 Shift 之後，長按不切換的規則完全不變。
 
 ### 速成規則
 
@@ -408,7 +445,7 @@ dist\qdict.bin       # 字典（可選，方便自行替換）
 │   ├── Keyboard.cs           # Win32 低階鍵盤掛鉤 + SendInput
 │   ├── CandidateForm.cs      # 候選字 / 聯想字視窗（WS_EX_NOACTIVATE）
 │   ├── Program.cs            # 主程式 / 系統匣 / 設定 / 說明
-│   ├── SelfTest.cs           # 129 項自我測試
+│   ├── SelfTest.cs           # 148 項自我測試
 │   ├── GameTest.cs           # 打機情境測試（長按 Shift 不誤切換）
 │   ├── IconShot.cs           # 系統匣圖示截圖
 │   └── UiShot.cs             # 候選窗 / 聯想窗截圖（離線檢查 UI）
@@ -429,7 +466,7 @@ dist\qdict.bin       # 字典（可選，方便自行替換）
 ### 執行測試
 
 ```powershell
-.\dist\QuickIME.exe --selftest          # 129 項自我測試
+.\dist\QuickIME.exe --selftest          # 148 項自我測試
 .\dist\QuickIME.exe --gametest          # 打機情境測試（長按 Shift + WASD 不誤切換）
 .\dist\QuickIME.exe --uishop shot.png   # 產生候選窗截圖
 .\dist\QuickIME.exe --iconshot .\icons  # 產生三種狀態的系統匣圖示
