@@ -93,12 +93,12 @@ https://raw.githubusercontent.com/kay786-003/quick-ime-source/main/releases/Quic
 
 ### 檔案校驗
 
-本專案 v2.3 的 Release 檔案 SHA256（**這是本次發佈的實際值，可直接比對**）：
+本專案 v2.3 的 Release 檔案 SHA256（**這是 Release 頁面實際檔案的值，可直接比對**）：
 
 | 檔案 | 大小 | SHA256 |
 |------|------|--------|
-| `QuickIME.exe` | 134,144 bytes | `64748d4baed535027c739c3e290b1a13cef1ba4e03c0a01c55bd1c1cb9f3dd55` |
-| `QuickIME-v2.3.zip` | 132,213 bytes | `af2c8b5c41be45e420e699cea00bdd812084589a5088547fc2e706fd64717017` |
+| `QuickIME.exe` | 134,144 bytes | `3c4bc23f1a4adf0a274fbb34e5210869f46ceace79d7ca1c7e2e7a886aeb925e` |
+| `QuickIME-v2.3.zip` | 133,128 bytes | `d076cb5361b3f16227b77881d73e26153c9d7d0a7bea807c7adb5c990432b574` |
 
 在 PowerShell 執行：
 
