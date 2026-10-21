@@ -14,8 +14,8 @@ QuickIME.exe  (單一執行檔，約 150 KB；字典 + 聯想詞表已內嵌)
 
 | 下載 | 檔案 | 說明 |
 |------|------|------|
-| **[QuickIME.exe](https://github.com/kay786-003/quick-ime-source/releases/download/v2.4/QuickIME.exe)** | 單一執行檔，雙擊即用（字典 + 聯想詞表已內嵌） |
-| **[QuickIME-v2.4.zip](https://github.com/kay786-003/quick-ime-source/releases/download/v2.4/QuickIME-v2.4.zip)** | exe + 字典 + 使用說明 + 示意圖 |
+| **[QuickIME.exe](https://github.com/kay786-003/quick-ime-source/releases/download/v2.5/QuickIME.exe)** | 單一執行檔，雙擊即用（字典 + 聯想詞表已內嵌） |
+| **[QuickIME-v2.5.zip](https://github.com/kay786-003/quick-ime-source/releases/download/v2.5/QuickIME-v2.5.zip)** | exe + 字典 + 使用說明 + 示意圖 |
 
 > 也可以到 **[Releases](https://github.com/kay786-003/quick-ime-source/releases)** 頁面查看所有正式版本。
 >
@@ -28,7 +28,7 @@ QuickIME.exe  (單一執行檔，約 150 KB；字典 + 聯想詞表已內嵌)
 
 > **用法**：把原本的 GitHub 網址**原封不動**貼在前綴後面，不用改任何字。
 >
-> 下面清單上一輪（v2.3，2026-10-20）實測全部可下載。**v2.4 剛發佈，鏡像尚未逐一重測**；
+> 下面清單上一輪（v2.3，2026-10-20）實測全部可下載。**v2.5 剛發佈，鏡像尚未逐一重測**；
 > 鏡像只是反向代理，只要 Release 檔案存在就會正常轉發。
 > 下載後請用下面的 SHA256 自行核對，這個比「鏡像是否可用」更可靠。
 
@@ -53,19 +53,19 @@ QuickIME.exe  (單一執行檔，約 150 KB；字典 + 聯想詞表已內嵌)
 #### QuickIME.exe 直連（揀一個可以下載的，複製即可）
 
 ```
-https://gh-proxy.com/https://github.com/kay786-003/quick-ime-source/releases/download/v2.4/QuickIME.exe
-https://ghfast.top/https://github.com/kay786-003/quick-ime-source/releases/download/v2.4/QuickIME.exe
-https://gh.llkk.cc/https://github.com/kay786-003/quick-ime-source/releases/download/v2.4/QuickIME.exe
-https://gh-proxy.org/https://github.com/kay786-003/quick-ime-source/releases/download/v2.4/QuickIME.exe
-https://gh.monlor.com/https://github.com/kay786-003/quick-ime-source/releases/download/v2.4/QuickIME.exe
-https://ghproxy.imciel.com/https://github.com/kay786-003/quick-ime-source/releases/download/v2.4/QuickIME.exe
-https://ghfile.geekertao.top/https://github.com/kay786-003/quick-ime-source/releases/download/v2.4/QuickIME.exe
-https://gh.nxnow.top/https://github.com/kay786-003/quick-ime-source/releases/download/v2.4/QuickIME.exe
-https://gh.sixyin.com/https://github.com/kay786-003/quick-ime-source/releases/download/v2.4/QuickIME.exe
-https://cors.isteed.cc/https://github.com/kay786-003/quick-ime-source/releases/download/v2.4/QuickIME.exe
+https://gh-proxy.com/https://github.com/kay786-003/quick-ime-source/releases/download/v2.5/QuickIME.exe
+https://ghfast.top/https://github.com/kay786-003/quick-ime-source/releases/download/v2.5/QuickIME.exe
+https://gh.llkk.cc/https://github.com/kay786-003/quick-ime-source/releases/download/v2.5/QuickIME.exe
+https://gh-proxy.org/https://github.com/kay786-003/quick-ime-source/releases/download/v2.5/QuickIME.exe
+https://gh.monlor.com/https://github.com/kay786-003/quick-ime-source/releases/download/v2.5/QuickIME.exe
+https://ghproxy.imciel.com/https://github.com/kay786-003/quick-ime-source/releases/download/v2.5/QuickIME.exe
+https://ghfile.geekertao.top/https://github.com/kay786-003/quick-ime-source/releases/download/v2.5/QuickIME.exe
+https://gh.nxnow.top/https://github.com/kay786-003/quick-ime-source/releases/download/v2.5/QuickIME.exe
+https://gh.sixyin.com/https://github.com/kay786-003/quick-ime-source/releases/download/v2.5/QuickIME.exe
+https://cors.isteed.cc/https://github.com/kay786-003/quick-ime-source/releases/download/v2.5/QuickIME.exe
 ```
 
-想下載 zip 版，把結尾的 `QuickIME.exe` 換成 `QuickIME-v2.4.zip` 就可以。
+想下載 zip 版，把結尾的 `QuickIME.exe` 換成 `QuickIME-v2.5.zip` 就可以。
 
 #### 也可以用 repo 內的備份 exe
 
@@ -96,18 +96,18 @@ https://raw.githubusercontent.com/kay786-003/quick-ime-source/main/releases/Quic
 
 ### 檔案校驗
 
-本專案 v2.4 的 Release 檔案 SHA256（**這是 Release 頁面實際檔案的值，可直接比對**）：
+本專案 v2.5 的 Release 檔案 SHA256（**這是 Release 頁面實際檔案的值，可直接比對**）：
 
 | 檔案 | 大小 | SHA256 |
 |------|------|--------|
-| `QuickIME.exe` | 145,920 bytes | `7218e324ebb843f7d8e9a6c60ead07f8a05d5dcdc3d2c24609d1750626cd7e42` |
-| `QuickIME-v2.4.zip` | 138,742 bytes | `d7a5499e2c3ea860925c81333554807de22da3c383278a3a39716dcbf6b72e0c` |
+| `QuickIME.exe` | 159,232 bytes | `c1767fff11801e8cf82e112bf476d54bd1824f12f200c03a9baee589c9133199` |
+| `QuickIME-v2.5.zip` | 143,647 bytes | `aee58c5f15db259f3b89d75566e8e85304941c77b6b7b8901ee3ec8941493b36` |
 
 在 PowerShell 執行：
 
 ```powershell
 Get-FileHash .\QuickIME.exe -Algorithm SHA256
-.\QuickIME.exe --version      # 應顯示 2.4
+.\QuickIME.exe --version      # 應顯示 2.5
 .\QuickIME.exe --selftest     # 應顯示全部 152 項通過
 .\QuickIME.exe --hooktest     # 應顯示按鍵流程全部 177 項通過
 .\QuickIME.exe --gametest     # 應顯示打機情境全部通過
@@ -118,7 +118,7 @@ Get-FileHash .\QuickIME.exe -Algorithm SHA256
 > 所以 `releases/` 裡那份、Release 頁面那份、你自己建置的那份，三者 SHA256 都不一樣，
 > **這是正常的**。
 >
-> 真正可靠的驗證方式是功能性的：跑 `--version`（應顯示 2.4）與上面三套測試
+> 真正可靠的驗證方式是功能性的：跑 `--version`（應顯示 2.5）與上面三套測試
 > （152 + 177 + 打機情境全部通過），就代表字典、組字流程、按鍵邏輯都完好。
 > 雜湊值只保證「你下載到的檔案與 Release 完全一致」，不保證「與原始碼編譯結果一致」。
 
