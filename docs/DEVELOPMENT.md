@@ -56,7 +56,7 @@ Typist.SendInput (KEYEVENTF_UNICODE) ← 送出中文字
 ### 為什麼要這樣分層
 
 `Composer` 完全不碰 UI 也不碰 Win32，所以可以用 `--selftest` 在無視窗環境下
-跑 25 項測試。這是這個專案最重要的設計決策 —— 輸入法的邏輯錯誤（例如翻頁
+跑 152 項測試。這是這個專案最重要的設計決策 —— 輸入法的邏輯錯誤（例如翻頁
 off-by-one、連打吞字）光靠人手測試很難覆蓋。
 
 ---
@@ -567,10 +567,10 @@ public bool ShouldLearn { get { return AssocEnabled && AssocLearnEnabled; } }
 ## 測試
 
 ```powershell
-# 147 項自我測試（字典 + 組字 + 翻頁 + 連打 + 切換 + 設定 + 聯想字 + 學習開關 + 選字鍵）
+# 152 項自我測試（字典 + 組字 + 翻頁 + 連打 + 切換 + 設定 + 聯想字 + 學習開關 + 選字鍵）
 .\dist\QuickIME.exe --selftest
 
-# 46 項按鍵流程重播（掛鉤層：連打／z／數字超界／尾頁 Enter／Ctrl 符號）
+# 177 項按鍵流程重播（掛鉤層：連打／z／數字超界／尾頁 Enter／Ctrl 符號／真實回呼接線）
 .\dist\QuickIME.exe --hooktest
 
 # 打機情境（長按 Shift + WASD 不誤切換）
@@ -598,19 +598,45 @@ public bool ShouldLearn { get { return AssocEnabled && AssocLearnEnabled; } }
 | 學習開關 | 預設值、ini 往返、兩個開關互相獨立、舊設定檔相容、關掉後舊記憶保留 |
 | 選字鍵 | Shift+數字判定、超出範圍、唔按 Shift 打數字、關掉後回復舊行為、舊設定檔相容 |
 
-`HookTest.cs`（掛鉤層）涵蓋 —— **這一層才是 v2.4 四個 bug 的守門人**：
+`HookTest.cs`（掛鉤層）涵蓋 —— **這一層才是 v2.4 / v2.5 那些 bug 的守門人**：
 
 | 類別 | 項目 |
 |------|------|
 | 連打 | `abo` 立刻送出「明」、`abof1` 送出兩個字、Reset 後重新組字 |
-| `z` | 空碼按 `z` 交回系統、組字中按 `z` 不改組字碼、有效字母仍被消耗 |
+| `z` | 空碼按 `z` 交回系統、組字中按 `z` 不改組字碼、**第三碼 `z` 不留死碼** |
 | 數字超界 | 超出當頁被吞（不出字、不改狀態）、`0` 不選字、1–9 正常選字 |
 | 尾頁 Enter | `FirstCandidate()` = 當前頁第 1 個、尾頁／中途頁 Enter 都送對字 |
 | Ctrl 符號 | 9 個全形標點、`?` 不接管、不含數字字母、組字中先上屏再出標點 |
-| 空白護欄 | 連按 12 次全程不上屏、尾頁繞返第 1 頁 |
+| Ctrl+Shift | `Ctrl+Shift+.` 不變「。」、Gate 失步仍尊重 Shift、英文模式透明 |
+| 空白規則 | 只有 1 個候選才上屏、2-9 個不上屏、多頁循環、尾頁繞返第 1 頁 |
+| 真實回呼接線 | `HookResult` 四值真值表、`ShouldFlush`/`ShouldSwallowKey`、`CallbackCore`、`ConvertCoreResult`、以假 Win32 接縫驅動完整 `HookCallback` 外殼 |
+| 快捷鍵保護 | 組字中 `Ctrl+Shift+字母/Esc/Tab/數字` 一律不上屏 |
 
 > 新增測試後**一定要驗證它會失敗**：把修正拿掉，確認對應的測試真的變成 FAIL。
 > 不會失敗的測試等於沒有測試。
+
+### v2.5 的教訓：測試本身的假陽性
+
+v2.4 的 148 項測試全過，卻有四個會打錯字的 bug。v2.5 修好之後，
+三輪獨立審查又發現**測試本身守不住實作**：
+
+1. `HookTest` 的 `Sim` 自己實作了「HookResult 2/3 就 Flush」和吞鍵規則，
+   所以 `HookCallback` 真正的接線完全沒被行使。把它改回錯版，全套測試依然全過。
+2. 抽成純函式（`ShouldFlush` / `ShouldSwallowKey`）只解決了一半 ——
+   「有沒有正確呼叫它們」仍然沒測到。
+3. 「組字中 `Ctrl+Shift+C` 不上屏」的測試**沒有按住 Shift**，
+   根本走不到那個分支；斷言是空轉的假陽性。
+
+最終解法：
+- `HookCallback` 只做委派，本體移到 `OnHookMessage`
+- Win32 讀取與 `CallNextHookEx` 抽成可替換接縫（`Win` / `CallNext`）
+- 測試經 `InvokeHookCallback` 驅動真正的外殼
+- **每個情境各開新 hook**，避免前一個情境清空組字令後面空轉
+- 斷言要**方向明確**（「吞鍵場景絕對不可以交回系統」），
+  不要用「回傳值同有無交回系統一致」這種自洽就算的寫法
+
+驗證方法：**mutation testing**。改壞實作看測試是否 FAIL，全部 10 個 mutation
+都能令測試變紅才算數（詳見 §測試）。
 
 
 ---

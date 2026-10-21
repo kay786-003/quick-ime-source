@@ -106,8 +106,8 @@ https://raw.githubusercontent.com/kay786-003/quick-ime-source/main/releases/Quic
 ```powershell
 Get-FileHash .\QuickIME.exe -Algorithm SHA256
 .\QuickIME.exe --version      # 應顯示 2.4
-.\QuickIME.exe --selftest     # 應顯示全部 147 項通過
-.\QuickIME.exe --hooktest     # 應顯示按鍵流程全部 46 項通過
+.\QuickIME.exe --selftest     # 應顯示全部 152 項通過
+.\QuickIME.exe --hooktest     # 應顯示按鍵流程全部 177 項通過
 .\QuickIME.exe --gametest     # 應顯示打機情境全部通過
 ```
 
@@ -117,7 +117,7 @@ Get-FileHash .\QuickIME.exe -Algorithm SHA256
 > **這是正常的**。
 >
 > 真正可靠的驗證方式是功能性的：跑 `--version`（應顯示 2.4）與上面三套測試
-> （147 + 46 + 打機情境全部通過），就代表字典、組字流程、按鍵邏輯都完好。
+> （152 + 177 + 打機情境全部通過），就代表字典、組字流程、按鍵邏輯都完好。
 > 雜湊值只保證「你下載到的檔案與 Release 完全一致」，不保證「與原始碼編譯結果一致」。
 
 
@@ -356,7 +356,7 @@ v2.0 全部改掉：
 ──────────────────────
 ☑ 攔住 Ctrl+空白（唔會轉全形符號）
 ──────────────────────
-  符號：永遠半形（唔會變全形）
+  符號：直接按半形，Ctrl+符號鍵打全形
 ```
 
 兩邊都不勾 = 完全關閉 Shift 切換（只能按系統匣圖示切換）。
@@ -364,8 +364,15 @@ v2.0 全部改掉：
 
 ### 符號與全形
 
-本程式**只送 ASCII 半形符號**，不會變成全形（`，。！？`），
-也不提供全形模式 —— 需要全形符號時請用微軟速成或其他輸入法。
+直接按 `,` `.` `?` `!` 一律送出**半形**，不會自動變全形。
+
+要打全形標點，跟微軟速成一樣：**按住 `Ctrl` 再按對應符號鍵**
+（`Ctrl+,` → `，`、`Ctrl+.` → `。`、`Ctrl+;` → `；`、`Ctrl+'` → `：`、
+`Ctrl+[` `]` → `「` `」`、`Ctrl+\` → `、`、`Ctrl+-` `=` → `－` `＝`）。
+
+- 組字中按 `Ctrl` + 符號鍵 → 先上屏目前候選，再出全形標點
+- 按住 `Shift` 時不接管，所以 `Ctrl+Shift+.` 仍然打出半形 `>`
+- 英文模式下完全不接管，`Ctrl+,` 保持系統原本行為
 
 `Ctrl+空白` 在微軟速成是「全形／半形」切換，打機緊張時很容易誤按。
 本程式**預設把它完全攔住**（按了完全沒反應，連系統都收不到）；
@@ -504,8 +511,8 @@ dist\qdict.bin       # 字典（可選，方便自行替換）
 │   ├── Keyboard.cs           # Win32 低階鍵盤掛鉤 + SendInput + Ctrl 全形標點
 │   ├── CandidateForm.cs      # 候選字 / 聯想字視窗（WS_EX_NOACTIVATE）
 │   ├── Program.cs            # 主程式 / 系統匣 / 設定 / 說明
-│   ├── SelfTest.cs           # 147 項自我測試（組字引擎層）
-│   ├── HookTest.cs           # 46 項按鍵流程重播測試（掛鉤層，抓得到真實 bug）
+│   ├── SelfTest.cs           # 152 項自我測試（組字引擎層）
+│   ├── HookTest.cs           # 177 項按鍵流程重播測試（掛鉤層，抓得到真實 bug）
 │   ├── GameTest.cs           # 打機情境測試（長按 Shift 不誤切換）
 │   ├── VersionInfo.cs        # 自動產生（build.ps1 從 VERSION 產生，勿手改）
 │   ├── app.manifest          # DPI 感知 + asInvoker（免管理員權限）
@@ -531,8 +538,8 @@ dist\qdict.bin       # 字典（可選，方便自行替換）
 ### 執行測試
 
 ```powershell
-.\dist\QuickIME.exe --selftest          # 147 項自我測試（字典 + 組字引擎）
-.\dist\QuickIME.exe --hooktest          # 46 項按鍵流程重播（連打／z／數字／Enter／Ctrl 符號）
+.\dist\QuickIME.exe --selftest          # 152 項自我測試（字典 + 組字引擎）
+.\dist\QuickIME.exe --hooktest          # 177 項按鍵流程重播（連打／z／數字／Enter／Ctrl 符號）
 .\dist\QuickIME.exe --gametest          # 打機情境測試（長按 Shift + WASD 不誤切換）
 .\dist\QuickIME.exe --uishop shot.png   # 產生候選窗截圖
 .\dist\QuickIME.exe --iconshot .\icons  # 產生三種狀態的系統匣圖示
