@@ -136,16 +136,24 @@ namespace QuickIME
             }
             Check(cycleOk, "連續按空白鍵會循環翻頁 " + pages2 + " 頁，中途不會上屏");
 
-            // 單頁時空格直接上屏
+            // 空白鍵：只有 1 個候選才上屏；2 個以上一律不上屏（用家實測微軟速成）
             committed = null;
             c.Reset();
-            c.TypeLetter('a');           // 單碼 'a' 只有 2 個字，1 頁
-            if (c.TotalPages == 1)
-            {
-                string a1 = c.FirstCandidate();
-                c.PressSpace();
-                Eq(a1, committed, "單頁時空格直接上屏");
-            }
+            c.TypeLetter('a');           // 單碼 'a' = 日/曰，2 個候選、只有一頁
+            Check(c.TotalPages == 1, "'a' 只有一頁");
+            Check(c.Count == 2, "'a' 有 2 個候選");
+            c.PressSpace();
+            Check(committed == null, "2 個候選時按空白 -> 不上屏（即使只有一頁）");
+            Check(c.IsComposing, "2 個候選時按空白 -> 仍然在組字");
+
+            // 只有 1 個候選的碼（'b' = 月）-> 空白上屏
+            committed = null;
+            c.Reset();
+            c.TypeLetter('b');
+            Check(c.Count == 1, "'b' 只有 1 個候選");
+            string b1 = c.FirstCandidate();
+            c.PressSpace();
+            Eq(b1, committed, "只有 1 個候選時，空格直接上屏");
 
             // 連打：滿兩碼後再輸入字母 -> 上屏首選並開新碼
             committed = null;

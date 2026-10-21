@@ -181,9 +181,11 @@ namespace QuickIME
         /// <summary>
         /// 按鍵 → 全形符號。<c>,</c>→<c>，</c>、<c>.</c>→<c>。</c> 是最常用的兩個。
         ///
-        /// 分做「一級」與「二級」兩張表，原因是同一個鍵要出兩個不同符號：
-        /// 用家的鍵盤上 <c>;</c> 與 <c>:</c> 是同一個鍵，用 Shift 區分。
-        /// 一級 = 不按 Shift，二級 = 按住 Shift。
+        /// 只有一張表、而且<b>只在沒有按 Shift 時</b>才查（見 <see cref="Lookup"/>）。
+        /// 以前有第二張「按住 Shift」的表，但同一個機制會令
+        /// <c>Ctrl+Shift+.</c>（想打 <c>&gt;</c>）變成 <c>。</c>、
+        /// <c>Ctrl+Shift+,</c>（想打 <c>&lt;</c>）變成 <c>，</c>。<c>：</c> 同 <c>「</c>
+        /// 已經有免 Shift 的路徑（<c>Ctrl+'</c>、<c>Ctrl+[</c>），所以第二張表沒有存在價值。
         /// </summary>
         private static readonly Dictionary<int, string> MapPlain = new Dictionary<int, string>
         {
@@ -198,23 +200,31 @@ namespace QuickIME
             { Native.VK_OEM_5,      "、" },   // \
         };
 
-        /// <summary>按住 Shift 時的版本（<c>Ctrl+Shift+;</c> → <c>：</c>）。</summary>
-        private static readonly Dictionary<int, string> MapShift = new Dictionary<int, string>
-        {
-            { Native.VK_OEM_1,      "：" },   // Ctrl+Shift+;  → ：
-            { Native.VK_OEM_7,      "「" },   // Ctrl+Shift+'  → 「
-        };
-
         /// <summary>
         /// 查這對 (vk, shift) 有沒有全形對應。沒有就回傳 null（交回系統）。
         /// 刻意<b>不含</b> <c>/ ?</c>：用家要半形的 <c>?</c>。也不含數字與字母。
+        ///
+        /// 【重要】按住 Shift 時<b>一律唔接管</b>：
+        /// 用家按 <c>Ctrl+Shift+,</c> 多數係想打 <c>&lt;</c>（Ctrl 放慢了一點），
+        /// 唔應該變成 <c>，</c>。
         /// </summary>
         public static string Lookup(uint vk, bool shift)
         {
+            if (shift) return null;
             string s;
-            if (shift && MapShift.TryGetValue((int)vk, out s)) return s;
             if (MapPlain.TryGetValue((int)vk, out s)) return s;
             return null;
+        }
+
+        /// <summary>
+        /// 這個鍵是否在符號表裡（不管有沒有按 Shift）。
+        /// 用於分辨「Ctrl+Shift+符號」（用家想打半形 <c>&gt;</c> <c>&lt;</c>）同
+        /// 「Ctrl+Shift+字母」（用家想用系統快捷鍵，例如 <c>Ctrl+Shift+Esc</c>）。
+        /// 只有前者才需要「先上屏候選、再放行」。
+        /// </summary>
+        public static bool IsMapped(uint vk)
+        {
+            return MapPlain.ContainsKey((int)vk);
         }
     }
 
@@ -458,22 +468,55 @@ namespace QuickIME
 
         private IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
         {
+            return OnHookMessage(nCode, wParam, lParam);
+        }
+
+        /// <summary>
+        /// 【給測試用】呼叫真正的 <see cref="HookCallback"/> 外殼（不是直接呼叫 OnHookMessage）。
+        ///
+        /// 【為什麼需要這個】
+        /// 如果測試只呼叫 <see cref="OnHookMessage"/>，那麼把 <see cref="HookCallback"/>
+        /// 外殼改成 `return Native.CallNextHookEx(...)`（＝輸入法完全失效）之後，
+        /// 175 項測試依然全過（實測）。也就是「外殼有沒有正確委派」這條線完全冇約束。
+        /// 有了這個方法，測試就可以走真正的外殼，把那個缺口封死。
+        /// </summary>
+        internal IntPtr InvokeHookCallback(int nCode, IntPtr wParam, IntPtr lParam)
+        {
+            return HookCallback(nCode, wParam, lParam);
+        }
+
+        /// <summary>
+        /// 【掛鉤回呼本體，可測試】真正的 WH_KEYBOARD_LL 回呼邏輯。
+        ///
+        /// 跟 <see cref="HookCallback"/> 的分工：<see cref="HookCallback"/> 只是
+        /// SetWindowsHookEx 用的 delegate 外殼，一行都不做決策；
+        /// 所有判斷都在這裡，而這裡**只透過 <see cref="Win"/> 和
+        /// <see cref="CallNext"/> 兩個可替換的接縫**去碰 Win32，
+        /// 所以 --hooktest 可以真的餵它一個假的 KBDLLHOOKSTRUCT 走完整條路。
+        ///
+        /// 【為什麼要這樣做】這是本專案最難測的一條線。以前整個回呼都碰 Win32，
+        /// 測試只能驗它「呼叫的方法」，驗不到「它自己有沒有正確呼叫」。
+        /// 結果：把它改回 v2.4 的錯版（選字只認 Consumed 才吞鍵 → 數字漏進文件），
+        /// 159 項測試依然全過（實測三次）。
+        /// </summary>
+        internal IntPtr OnHookMessage(int nCode, IntPtr wParam, IntPtr lParam)
+        {
             if (nCode < 0)
-                return Native.CallNextHookEx(_hook, nCode, wParam, lParam);
+                return CallNext(_hook, nCode, wParam, lParam);
 
             int msg = (int)wParam;
 
             // ---- KeyUp ----
             if (msg == Native.WM_KEYUP || msg == Native.WM_SYSKEYUP)
             {
-                var upInfo = (Native.KBDLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(Native.KBDLLHOOKSTRUCT));
+                var upInfo = Win.ReadKeyEvent(lParam);
 
                 // 自己注入的按鍵一律放行
                 if (upInfo.dwExtraInfo == Typist.Magic)
-                    return Native.CallNextHookEx(_hook, nCode, wParam, lParam);
+                    return CallNext(_hook, nCode, wParam, lParam);
 
                 if (!Enabled)
-                    return Native.CallNextHookEx(_hook, nCode, wParam, lParam);
+                    return CallNext(_hook, nCode, wParam, lParam);
 
                 var up = new KeyInput
                 {
@@ -484,13 +527,13 @@ namespace QuickIME
                 };
                 ProcessKeyUp(up);
                 // 注意：一定要放行 keyup，否則 Shift+字母（打大寫）會卡住 Shift 狀態。
-                return Native.CallNextHookEx(_hook, nCode, wParam, lParam);
+                return CallNext(_hook, nCode, wParam, lParam);
             }
 
             if (msg != Native.WM_KEYDOWN && msg != Native.WM_SYSKEYDOWN)
-                return Native.CallNextHookEx(_hook, nCode, wParam, lParam);
+                return CallNext(_hook, nCode, wParam, lParam);
 
-            var info = (Native.KBDLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(Native.KBDLLHOOKSTRUCT));
+            var info = Win.ReadKeyEvent(lParam);
 
             // 自己注入的按鍵（上屏文字）一律放行，否則會無限回圈。
             if (info.dwExtraInfo == Typist.Magic)
@@ -498,27 +541,147 @@ namespace QuickIME
                 // 掛鉤對延遲極敏感（LowLevelHooksTimeout 預設 300ms，逾時系統會靜默移除掛鉤），
                 // 所以日誌一律惰性求值：Verbose=false 時連字串都不會組。
                 Program.Log(() => "hook: injected vk=" + info.vkCode + " -> pass");
-                return Native.CallNextHookEx(_hook, nCode, wParam, lParam);
+                return CallNext(_hook, nCode, wParam, lParam);
             }
 
             var input = new KeyInput
             {
                 Vk = info.vkCode,
-                Ctrl = IsDown(Native.VK_CONTROL) || IsDown(Native.VK_LCONTROL) || IsDown(Native.VK_RCONTROL),
-                Alt = IsDown(Native.VK_MENU) || IsDown(Native.VK_LMENU) || IsDown(Native.VK_RMENU),
-                Win = IsDown(0x5B) || IsDown(0x5C),
+                Ctrl = Win.IsDown(Native.VK_CONTROL) || Win.IsDown(Native.VK_LCONTROL) || Win.IsDown(Native.VK_RCONTROL),
+                Alt = Win.IsDown(Native.VK_MENU) || Win.IsDown(Native.VK_LMENU) || Win.IsDown(Native.VK_RMENU),
+                Win = Win.IsDown(0x5B) || Win.IsDown(0x5C),
                 ShiftSide = ShiftSideOf(info.vkCode),
                 NowMs = NowMs(),
-                ShiftPhysicallyDown = ShiftActuallyDown()
+                ShiftPhysicallyDown = Win.ShiftActuallyDown()
             };
 
-            int result = ProcessKeyDown(input);
+            // 【極重要】這一行是整個掛鉤對外的唯一決策出口。
+            // 不可以改寫成 `ProcessKeyDown(...)` + 自己判斷，見 CallbackCore 的註解。
+            return ConvertCoreResult(CallbackCore(input), nCode, wParam, lParam);
+        }
 
-            if (result == HookResult.CommitPending) Flush();
+        /// <summary>
+        /// 掛鉤碰 Win32 的接縫（測試會換成假的實作，所以測試不會真的讀鍵盤）。
+        /// 正式執行時就是下面這個 <see cref="RealWin"/>。
+        /// </summary>
+        internal sealed class Win32Seam
+        {
+            public Func<IntPtr, Native.KBDLLHOOKSTRUCT> ReadKeyEvent;
+            public Func<int, bool> IsDown;
+            public Func<bool> ShiftActuallyDown;
+        }
 
-            return result == HookResult.Consumed
+        internal static readonly Win32Seam RealWin = new Win32Seam
+        {
+            ReadKeyEvent = delegate(IntPtr lParam)
+            {
+                return (Native.KBDLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(Native.KBDLLHOOKSTRUCT));
+            },
+            IsDown = delegate(int vk) { return (Native.GetAsyncKeyState(vk) & 0x8000) != 0; },
+            ShiftActuallyDown = delegate
+            {
+                return (Native.GetAsyncKeyState(Native.VK_SHIFT) & 0x8000) != 0
+                    || (Native.GetAsyncKeyState(Native.VK_LSHIFT) & 0x8000) != 0
+                    || (Native.GetAsyncKeyState(Native.VK_RSHIFT) & 0x8000) != 0;
+            }
+        };
+
+        /// <summary>目前使用的 Win32 接縫（測試會換成假的）。</summary>
+        internal Win32Seam Win = RealWin;
+
+        /// <summary>CallNextHookEx 的接縫（測試會換成假實作，避免真的呼叫系統）。</summary>
+        internal Func<IntPtr, int, IntPtr, IntPtr, IntPtr> CallNext = Native.CallNextHookEx;
+
+        /// <summary>
+        /// 把 <see cref="CallbackCore"/> 的結果轉成掛鉤的 return 值。
+        ///
+        /// 【為什麼要獨立成一個方法】
+        /// 「吞鍵 → 回 1；放行 → CallNextHookEx」這個對應關係以前寫死在
+        /// <see cref="HookCallback"/> 裡，而 <see cref="HookCallback"/> 碰 Win32，測試碰唔到。
+        /// 抽出來之後，測試可以直接驗「給 CallbackCore 一個結果，最終回傳值對不對」，
+        /// 不必真的掛鉤。
+        /// </summary>
+        internal IntPtr ConvertCoreResult(IntPtr core, int nCode, IntPtr wParam, IntPtr lParam)
+        {
+            return core == Swallow
                 ? (IntPtr)1
-                : Native.CallNextHookEx(_hook, nCode, wParam, lParam);
+                : CallNext(_hook, nCode, wParam, lParam);
+        }
+
+        /// <summary>CallbackCore 的「吞鍵」返回值。刻意用一個具名常數，避免和 IntPtr.Zero 混淆。</summary>
+        internal static readonly IntPtr Swallow = (IntPtr)1;
+
+        /// <summary>
+        /// 【掛鉤回呼的核心，可測試】真正的「一個 keydown → 要唔要吞鍵」決策。
+        ///
+        /// 【為什麼 <see cref="HookCallback"/> 一定要呼叫這個方法，而不可以自己寫】
+        /// 這是本專案最容易被改壞、又最難測的一條線：
+        /// <code>
+        /// int result = ProcessKeyDown(input);
+        /// ApplyHookResult(result);                    // 送字
+        /// return ShouldSwallowKey(result) ? 1 : ...;  // 吞鍵
+        /// </code>
+        /// 以前這段寫死在 <see cref="HookCallback"/> 裡面，而 <see cref="HookCallback"/>
+        /// 要 Marshal、要真掛鉤，測試碰唔到 → 把它改回 v2.4 的錯版（只認 Consumed 才吞鍵），
+        /// 141 項測試依然全過（實測），「按數字選字但數字漏進文件（么2）」可以原樣復活。
+        ///
+        /// 所以：<see cref="HookCallback"/> 的唯一出口就是
+        /// <c>return CallbackCore(input) == Swallow ? 1 : CallNextHookEx(...)</c>，
+        /// 中間一行都不可以自己寫。測試直接呼叫這個方法，就等於行使了真實掛鉤的決策。
+        /// </summary>
+        /// <returns>(IntPtr)1 = 吞掉按鍵；IntPtr.Zero = 交回系統。</returns>
+        internal IntPtr CallbackCore(KeyInput input)
+        {
+            int ignored;
+            return CallbackCore(input, out ignored);
+        }
+
+        /// <summary>
+        /// 同上，另外回報這次的 <see cref="HookResult"/>（給測試斷言用）。
+        /// </summary>
+        internal IntPtr CallbackCore(KeyInput input, out int result)
+        {
+            result = ProcessKeyDown(input);
+            ApplyHookResult(result);
+            return ShouldSwallowKey(result) ? Swallow : IntPtr.Zero;
+        }
+
+
+        /// <summary>
+        /// 「這個 HookResult 要不要送字」——純邏輯，給 <see cref="HookCallback"/> 與測試共用。
+        ///
+        /// 【為什麼要抽出來】以前這兩個判斷直接寫死在 <see cref="HookCallback"/> 裡面，
+        /// 而 <see cref="HookCallback"/> 碰 Win32（要 Marshal、要真的掛鉤），測試碰不到。
+        /// 於是 --hooktest 只能驗「ProcessKeyDown 回傳咩」，驗不到「回傳值有沒有被正確解讀」——
+        /// v2.4 那個「按數字選字但數字漏進文件」的 bug 就活在這一條縫裡面，
+        /// 而且把它改壞之後 88 項測試依然全過。
+        /// 抽成純函式之後，測試可以直接驗這兩個方法的每一種輸入。
+        /// </summary>
+        internal static bool ShouldFlush(int result)
+        {
+            return result == HookResult.CommitPending || result == HookResult.CommitPendingPass;
+        }
+
+        /// <summary>
+        /// 「這個 HookResult 要不要吞掉按鍵」。純邏輯，見 <see cref="ShouldFlush"/> 的說明。
+        ///
+        /// 【極重要】<see cref="HookResult.CommitPending"/> 一定要吞鍵。
+        /// 它代表「按數字選字」＝字要上屏、而那個數字本身**不可以**漏進文件。
+        /// v2.4 只認 <see cref="HookResult.Consumed"/>，結果打完 `hi` 按 `2`
+        /// 畫面出「么」但文件變成「么2」。
+        /// </summary>
+        internal static bool ShouldSwallowKey(int result)
+        {
+            return result == HookResult.Consumed || result == HookResult.CommitPending;
+        }
+
+        /// <summary>
+        /// 執行 <see cref="HookResult"/> 要求的副作用（目前只有送字）。
+        /// 抽出來是為了讓測試能驗「回傳值 → 實際動作」這條接線。
+        /// </summary>
+        internal void ApplyHookResult(int result)
+        {
+            if (ShouldFlush(result)) Flush();
         }
 
         /// <summary>ProcessKeyDown 的回傳值。</summary>
@@ -530,6 +693,16 @@ namespace QuickIME
             public const int Consumed = 1;
             /// <summary>已消耗，而且要立刻把 Composer 的 PendingText 送出去。</summary>
             public const int CommitPending = 2;
+            /// <summary>
+            /// 要把 PendingText 送出去，**但個鍵仍然交回系統**。
+            ///
+            /// 為什麼需要第四種：有些鍵會「一邊上屏、一邊照常打出來」——
+            /// 例如 `ab` 之後按 `z`（先上屏「明」，z 本身要照樣打出來）。
+            /// 舊版只有 Pass / Consumed 兩種，遇到這種情況只能二選一：
+            /// 揀 Pass 就丟了「明」，揀 Consumed 就吞了 z。
+            /// 兩者都是打錯字，所以要把「送字」同「消不消耗」分開表達。
+            /// </summary>
+            public const int CommitPendingPass = 3;
         }
 
         /// <summary>
@@ -591,9 +764,21 @@ namespace QuickIME
             // 必須放在「組字中」之前：組字時按 Ctrl+, 也應該先上屏首選、再出「，」。
             // 必須放在「有 Ctrl 就放行」之前，否則 Ctrl+, 會直接漏給系統（等於打不出來）。
             // 刻意不接管 ? / ! —— 用家要半形。
-            if (k.Ctrl && !k.Alt && !k.Win)
+            //
+            // 只在中文模式接管：英文模式下應該完全透明（按 Ctrl+, 就係系統原本的行為）。
+            // 這項判斷必須放在「組字中」之前，因為英文模式仍然可能殘留組字狀態。
+            if (ChineseMode && k.Ctrl && !k.Alt && !k.Win)
             {
-                bool shiftHeld = _gate.IsShiftHeld;
+                // 【重要】用「Gate 記憶 OR 系統實際狀態」，唔可以只用 Gate。
+                //
+                // Gate 只會在收到 Shift keydown 時才更新，但以下情況佢收唔到：
+                //   * 程式啟動時 Shift 已經按住
+                //   * 暫停輸入法期間按住 Shift（Enabled=false 時 ProcessKeyDown 直接 return）
+                //   * 掛鉤被系統移除再重裝
+                // 一旦 Gate 覺得「冇按住 Shift」但實體係按住，Lookup() 就會命中，
+                // 用家想打 `>`（Ctrl+Shift+.）就會變成「。」—— 實測重現過。
+                // 所以這裡兩邊都要睇：任何一邊話 Shift 按住，就當按住。
+                bool shiftHeld = _gate.IsShiftHeld || k.ShiftPhysicallyDown;
                 string punct = FullWidthPunct.Lookup(vk, shiftHeld);
                 if (punct != null)
                 {
@@ -640,9 +825,23 @@ namespace QuickIME
             // ---- 長按 Shift 期間：完全唔組字，鍵盤交回原生 ----
             // 打機長按 Shift 跑步時，WASD 一定要傳到遊戲，所以這裡直接放行。
             // （Shift 長期按住亦唔會切換中英，見 ToggleGate 的長按判定。）
-            if (_gate.IsShiftHeld)
+            //
+            // 【重要】判斷條件同上面 Ctrl+符號 那段一致：Gate 記憶 OR 系統實際狀態。
+            // 只用 Gate 的話，Gate 失步（例如暫停期間按住 Shift）就會漏掉這整段，
+            // 令組字狀態殘留。
+            if (_gate.IsShiftHeld || k.ShiftPhysicallyDown)
             {
-                if (!k.Ctrl && !k.Alt && !k.Win && _composer.IsComposing)
+                // 為什麼要排除 Ctrl / Alt / Win：組字中按 Ctrl+C、Ctrl+V 等快捷鍵
+                // 不應該偷偷上屏一個字。
+                //
+                // 但「Ctrl+Shift+符號鍵」係例外：用家想打半形 <c>&gt;</c> <c>&lt;</c>，
+                // 只係 Ctrl 放慢了一點才變成 Ctrl+Shift。這時組字狀態必須先了結，
+                // 否則候選窗會殘留、下一個字母又會接上舊碼（實測會變 `ab` 之後按
+                // Ctrl+Shift+. 完全冇反應，但碼仍然係 ab）。
+                // 所以：符號鍵 → 先上屏首選，再放行（同 Enter／標點一致）；
+                //      其他鍵（字母、Esc 等）→ 維持原狀，唔上屏。
+                bool isPunctKey = FullWidthPunct.IsMapped(vk);
+                if (_composer.IsComposing && (!k.Ctrl || isPunctKey) && !k.Alt && !k.Win)
                 {
                     string first = _composer.FirstCandidate();
                     if (!string.IsNullOrEmpty(first)) { _composer.Commit(first); Flush(); }
@@ -723,11 +922,20 @@ namespace QuickIME
             char lower = ToLowerLetter(vk);
             if (lower != '\0')
             {
-                // 【重要】TypeLetter 回傳 false = 這個字母不是有效碼（例如 z，或第二碼 z）。
-                // 舊版不理回傳值、一律消耗 → z 被靜默吞掉。
-                // 現在交回系統，讓 z 照常打出來。
+                // 先記住「打之前係唔係已經滿兩碼」。
+                // 因為 TypeLetter 在滿兩碼時會先上屏首選（連打），
+                // 如果接下來這個字母唔被接受（＝z），那個上屏動作仍然要兌現。
+                int before = _composer.Code.Length;
+
                 if (!_composer.TypeLetter(lower))
-                    return HookResult.Pass;
+                {
+                    // 唔接受（z 在任何位置都唔係字根）。
+                    // 若剛剛其實已經上屏了首選，就要「送字 + 放行」——
+                    // 純 Pass 會令「明」被下一個 Commit 覆蓋，純 Consumed 會吞掉 z。
+                    return before >= 2 && _composer.PendingText != null
+                        ? HookResult.CommitPendingPass
+                        : HookResult.Pass;
+                }
 
                 // 【重要】連打時 TypeLetter 內部會 Commit 上一個首選字，
                 // 舊版沒有 Flush，那個字會留在 PendingText 被下一次 Commit 覆蓋

@@ -6,8 +6,8 @@
 // ============================================================================
 using System.Reflection;
 
-[assembly: AssemblyVersion("2.4.0.0")]
-[assembly: AssemblyFileVersion("2.4.0.0")]
+[assembly: AssemblyVersion("2.5.0.0")]
+[assembly: AssemblyFileVersion("2.5.0.0")]
 [assembly: AssemblyProduct("速成輸入法 (Quick IME)")]
 [assembly: AssemblyTitle("QuickIME")]
 [assembly: AssemblyDescription("免安裝速成輸入法 — 不依賴 Windows 輸入法框架")]
@@ -17,9 +17,9 @@ namespace QuickIME
     internal static class VersionInfo
     {
         /// <summary>程式版本（例如 "2.4"）。</summary>
-        public const string Version = "2.4";
+        public const string Version = "2.5";
 
         /// <summary>給組件用的四段式版本（例如 "2.4.0.0"）。</summary>
-        public const string AssemblyVersion = "2.4.0.0";
+        public const string AssemblyVersion = "2.5.0.0";
     }
 }

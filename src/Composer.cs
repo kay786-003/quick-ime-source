@@ -38,22 +38,24 @@ namespace QuickIME
         /// <summary>狀態變更（組字碼 / 候選 / 頁碼）時觸發，讓 UI 重畫。</summary>
         public event EventHandler Changed;
 
-        /// <summary>
-        /// 空格鍵行為（預設：微軟速成習慣 = 下一頁，到尾頁就繞返第 1 頁）。
-        /// 關掉之後空格變成「直接上屏目前反白嘅候選」。
-        /// </summary>
-        public bool SpaceIsNextPage { get; set; }
-
         public Composer(Dict dict)
         {
             _dict = dict;
-            SpaceIsNextPage = true;   // 預設跟微軟速成：空格 = 下一頁
         }
 
         /// <summary>
         /// 按下空白鍵。
-        /// * 有多頁 → 下一頁；到尾頁再按 → <b>繞返第 1 頁</b>（循環翻頁，永遠唔會偷偷上屏）
-        /// * 只有一頁 → 上屏第 1 個（根本冇頁可翻，同微軟速成一樣）
+        /// * 有多頁 → 下一頁；到尾頁再按 → <b>繞返第 1 頁</b>（循環翻頁，不涉及上屏）
+        /// * 只有一頁、而且唔止一個候選 → <b>完全冇反應</b>（不上屏、不換頁）
+        /// * 全份清單只有 <b>1 個</b>候選 → 上屏那一個（冇嘢可以揀，同微軟速成一樣）
+        ///
+        /// 【為什麼是「候選數 == 1」而不是「只有一頁」】
+        /// 這是用家實測微軟速成的結論（2026-10）：
+        ///   - `b`（月，只有 1 個候選）按空白 → <b>上屏</b>
+        ///   - `a`（日／曰，2 個候選、仍然只有一頁）按空白 → <b>不上屏</b>，
+        ///     因為仲有兩個字可以揀，空白鍵唔應該替用家決定
+        /// 舊版用 `TotalPages &lt;= 1` 去判斷，會令 `a` + 空白直接打出「日」——
+        /// 同微軟速成唔一致，而且係「畫面有兩個選擇但程式自己揀咗」的打錯字。
         ///
         /// 點解尾頁要繞返第 1 頁：微軟速成用家習慣「一路按空白鍵掃候選字」，
         /// 掃到尾頁時手指仍然會再按一下。若果呢一下就上屏，
@@ -63,8 +65,12 @@ namespace QuickIME
         public bool PressSpace()
         {
             if (!IsComposing) return false;
-            if (!SpaceIsNextPage) return CommitFirst();
-            if (TotalPages <= 1) return CommitFirst();
+
+            // 全份清單只有一個候選 → 冇嘢可揀，直接上屏（微軟速成行為）
+            if (_candidates.Count <= 1) return CommitFirst();
+
+            // 2-9 個候選（只有一頁）→ 空白鍵唔應該有任何作用
+            if (TotalPages <= 1) return false;
 
             int np = (_page + 1) % TotalPages;
             if (np == _page) return false;
@@ -135,12 +141,15 @@ namespace QuickIME
         {
             if (lower < 'a' || lower > 'z') return false;
 
-            // 'z' 唔係倉頡字根，唔可以用嚟開新碼（避免一堆「無此碼」）
-            if (lower == 'z' && _code.Length == 0) return false;
-
             if (_code.Length >= 2)
             {
                 // 已滿兩碼：直接把目前首選上屏，再用這個字母開新一輪（連打）
+                //
+                // 【重要】這段一定要放在 z 檢查之前。
+                // 舊版先檢查 z，結果 `ab` 之後按 z：z 被拒 → 但碼已經被清成空，
+                // 之後又 append 了一個 z，留下「碼 = z、零個候選」的死碼，
+                // 下一個字母就變成 `za`（打出「　」而不是你想要的字）。
+                // 正確次序：先上屏「明」，再講 z 唔接受。
                 string first = FirstCandidate();
                 if (!string.IsNullOrEmpty(first))
                 {
@@ -155,8 +164,9 @@ namespace QuickIME
                 _page = 0;
             }
 
-            // 第二碼係 'z' 亦無意義（z 非字根），只在第一碼時才接受
-            if (lower == 'z' && _code.Length > 0) return false;
+            // 'z' 唔係倉頡字根，任何位置都唔接受（第一碼、第二碼、或者滿兩碼之後都一樣）。
+            // 交回系統讓 z 照常打出來 —— 見 AGENTS.md 硬規則 7。
+            if (lower == 'z') return false;
 
             _code.Append(lower);
             RefreshCandidates();
