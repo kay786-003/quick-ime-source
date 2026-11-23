@@ -670,7 +670,7 @@ namespace QuickIME
             sb.AppendLine();
             sb.AppendLine("  ★ 記錄習慣開關：右鍵圖示 → 聯想字 → 「記錄用字習慣」");
             sb.AppendLine("    勾選（預設）：會學你嘅用字習慣，常用組合排更前。");
-            sb.AppendLine("    取消勾選：仍然有聯想字，但只用出廠詞表，唔會再學新嘅。");
+            sb.AppendLine("    取消勾選：仍然有聯想字，唔會再學新嘅。");
             sb.AppendLine("              （之前學到嘅記憶會保留，聯想仍然照舊排序）");
             sb.AppendLine();
             sb.AppendLine("  ★ 選字鍵：右鍵圖示 → 聯想字 → 「Shift + 數字鍵選聯想字」");
@@ -796,7 +796,7 @@ namespace QuickIME
         ///
         /// 與 <see cref="AssocEnabled"/> 刻意分開：
         ///   * AssocEnabled = false      → 完全唔出聯想窗
-        ///   * AssocLearnEnabled = false → 仍然出聯想窗，但只用出廠詞表，唔會學習
+        ///   * AssocLearnEnabled = false → 仍然出聯想窗，沿用已學到的排序，但不再學習
         /// 兩者都開（預設）= 完整體驗：有建議，亦會越用越貼你。
         /// </summary>
         public bool AssocLearnEnabled = true;

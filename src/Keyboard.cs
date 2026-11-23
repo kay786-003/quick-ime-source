@@ -988,7 +988,7 @@ namespace QuickIME
         ///
         /// 與 <see cref="AssocEnabled"/> 分開：
         ///   * AssocEnabled = false      → 不出聯想窗，也不學
-        ///   * AssocLearnEnabled = false → 仍然出聯想窗，但只用出廠詞表
+        ///   * AssocLearnEnabled = false → 仍然出聯想窗，沿用已學到的排序，但不再學習
         ///
         /// 關掉之後，已有的記憶仍然會被讀取（聯想仍然按舊記憶排），
         /// 只是不再新增／累加。這樣用家「暫停學習」唔會失去之前學到的東西。
