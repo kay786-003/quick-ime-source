@@ -66,7 +66,7 @@
 也就是不含 `qdict.bin`、不含 `data/`、不內嵌字典的 `QuickIME.exe`
 → 程式碼可用 **MIT**。
 
-此時使用者需自行執行 `tools/gen-dict.ps1` 從上游取得字表來產生字典。
+此時請先從上游取得上文列出的字表版本，存為 `data/ms_quick.dict.yaml`，再執行 `tools/gen-dict.ps1` 產生字典。腳本不會自動下載字表。
 
 ---
 
